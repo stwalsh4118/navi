@@ -243,10 +243,34 @@ func pollSessions() tea.Msg {
 		return sessionsMsg(nil)
 	}
 
+	// Enrich sessions with token data from transcripts
+	enrichSessionsWithTokens(sessions)
+
 	// Sort sessions
 	sortSessions(sessions)
 
 	return sessionsMsg(sessions)
+}
+
+// enrichSessionsWithTokens adds token metrics to sessions by parsing their transcript files.
+func enrichSessionsWithTokens(sessions []SessionInfo) {
+	for i := range sessions {
+		if sessions[i].CWD == "" {
+			continue
+		}
+
+		tokens := GetSessionTokens(sessions[i].CWD)
+		if tokens == nil {
+			continue
+		}
+
+		// Initialize Metrics if nil
+		if sessions[i].Metrics == nil {
+			sessions[i].Metrics = &Metrics{}
+		}
+
+		sessions[i].Metrics.Tokens = tokens
+	}
 }
 
 // expandPath expands ~ to the user's home directory.

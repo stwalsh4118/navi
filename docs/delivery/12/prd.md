@@ -117,10 +117,21 @@ Metrics require extending the hook system to capture more data:
 
 ## Open Questions
 
-- Can we access token counts from Claude Code's output?
+- ~~Can we access token counts from Claude Code's output?~~ **RESOLVED: No** - Research confirmed tokens are only available via OpenTelemetry telemetry, not hooks.
 - Should metrics be stored separately from status files?
 - Should we support exporting metrics to CSV/JSON?
 
+## Implementation Notes
+
+### Token Tracking Limitation
+Research in task 12-4 confirmed that **token counts are NOT available via Claude Code hooks**. The only way to access token usage data is through OpenTelemetry telemetry, which requires setting up external infrastructure (OTLP endpoint, Honeycomb, etc.). This is outside the scope of the hook-based architecture.
+
+The implementation tracks:
+- **Time metrics**: Session duration, working time, waiting time
+- **Tool metrics**: Tool call counts and recent tools list
+
+Token tracking could be added in the future if OpenTelemetry integration is implemented.
+
 ## Related Tasks
 
-See [Tasks](./tasks.md)
+[View Tasks](./tasks.md)

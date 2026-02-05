@@ -19,8 +19,9 @@ type SessionInfo struct {
 	Message     string   `json:"message"`
 	CWD         string   `json:"cwd"`
 	Timestamp   int64    `json:"timestamp"`
-	Git         *GitInfo `json:"git,omitempty"`    // Git repository info (nil if not a git repo)
-	Remote      string   `json:"remote,omitempty"` // Remote name (empty for local sessions)
+	Git         *GitInfo `json:"git,omitempty"`     // Git repository info (nil if not a git repo)
+	Remote      string   `json:"remote,omitempty"`  // Remote name (empty for local sessions)
+	Metrics     *Metrics `json:"metrics,omitempty"` // Session metrics (tokens, time, tools)
 }
 
 // FilterMode represents the session filter state.
@@ -359,6 +360,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if session.CWD != "" && session.Git != nil {
 					return m, fetchPRCmd(session.CWD)
 				}
+				return m, nil
+			}
+			return m, nil
+
+		case "i":
+			// Open metrics detail view for selected session
+			filteredSessions := m.getFilteredSessions()
+			if len(filteredSessions) > 0 && m.cursor < len(filteredSessions) {
+				session := filteredSessions[m.cursor]
+				m.sessionToModify = &session
+				m.dialogMode = DialogMetricsDetail
+				m.dialogError = ""
 				return m, nil
 			}
 			return m, nil
