@@ -11,7 +11,7 @@
         "hooks": [{ "type": "command", "command": "~/.claude-sessions/hooks/notify.sh done" }]
       }
     ],
-    "PreToolUse": [
+    "PermissionRequest": [
       {
         "hooks": [{ "type": "command", "command": "~/.claude-sessions/hooks/notify.sh permission" }]
       }
