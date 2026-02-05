@@ -12,7 +12,7 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 4 | User | As a user, I want a styled TUI that displays all Claude sessions with status icons and messages so that I can see at a glance which sessions need attention | Proposed | [View Details](./4/prd.md) |
 | 5 | User | As a user, I want to attach to and detach from tmux sessions directly from the TUI so that I can interact with Claude and return to the dashboard seamlessly | Proposed | [View Details](./5/prd.md) |
 | 6 | User | As a user, I want an installation script so that I can easily deploy the hooks and TUI binary | Proposed | [View Details](./6/prd.md) |
-| 7 | User | As a user, I want to create, kill, and rename sessions directly from the TUI so that I can manage my Claude sessions without leaving the dashboard | Proposed | [View Details](./7/prd.md) |
+| 7 | User | As a user, I want to create, kill, and rename sessions directly from the TUI so that I can manage my Claude sessions without leaving the dashboard | Agreed | [View Details](./7/prd.md) |
 | 8 | User | As a user, I want to organize sessions with groups and tags so that I can manage many sessions across different projects | Proposed | [View Details](./8/prd.md) |
 | 9 | User | As a user, I want desktop notifications when sessions need attention so that I don't have to constantly watch the TUI | Proposed | [View Details](./9/prd.md) |
 | 10 | User | As a user, I want webhook integrations (Slack, Discord) so that I can receive session alerts in my team communication tools | Proposed | [View Details](./10/prd.md) |
@@ -62,3 +62,4 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 2026-02-05 12:00:00 | 23 | Created | CLI Mode - non-interactive commands for scripting | AI_Agent |
 | 2026-02-05 12:00:00 | 24 | Created | Themes & Keybindings - customization, compact mode, help overlay | AI_Agent |
 | 2026-02-05 12:00:00 | 25 | Created | Mouse Support - click, scroll interactions | AI_Agent |
+| 2026-02-05 08:02:16 | 7 | Status Change | Proposed → Agreed - Approved for task breakdown | User |
