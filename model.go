@@ -386,8 +386,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case sessionsMsg:
-		// Update sessions list
-		m.sessions = msg
+		// Update local sessions while preserving remote sessions
+		var remoteSessions []SessionInfo
+		for _, s := range m.sessions {
+			if s.Remote != "" {
+				remoteSessions = append(remoteSessions, s)
+			}
+		}
+
+		// Combine new local sessions with preserved remote sessions
+		allSessions := append([]SessionInfo{}, msg...)
+		allSessions = append(allSessions, remoteSessions...)
+		sortSessions(allSessions)
+		m.sessions = allSessions
 
 		// Merge cached git info into sessions
 		if m.gitCache != nil {
