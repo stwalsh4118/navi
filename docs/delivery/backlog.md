@@ -16,7 +16,7 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 8 | User | As a user, I want to organize sessions with groups and tags so that I can manage many sessions across different projects | Proposed | [View Details](./8/prd.md) |
 | 9 | User | As a user, I want desktop notifications when sessions need attention so that I don't have to constantly watch the TUI | Proposed | [View Details](./9/prd.md) |
 | 10 | User | As a user, I want webhook integrations (Slack, Discord) so that I can receive session alerts in my team communication tools | Proposed | [View Details](./10/prd.md) |
-| 11 | User | As a user, I want a preview pane showing recent session output so that I can see what's happening without fully attaching | Proposed | [View Details](./11/prd.md) |
+| 11 | User | As a user, I want a preview pane showing recent session output so that I can see what's happening without fully attaching | Agreed | [View Details](./11/prd.md) |
 | 12 | User | As a user, I want to see session metrics (token usage, time tracking, tool activity) so that I can understand resource consumption | Proposed | [View Details](./12/prd.md) |
 | 13 | User | As a user, I want fuzzy search and filtering so that I can quickly find sessions when I have many running | Proposed | [View Details](./13/prd.md) |
 | 14 | User | As a user, I want to select multiple sessions and perform bulk actions so that I can efficiently manage many sessions at once | Proposed | [View Details](./14/prd.md) |
@@ -63,3 +63,4 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 2026-02-05 12:00:00 | 24 | Created | Themes & Keybindings - customization, compact mode, help overlay | AI_Agent |
 | 2026-02-05 12:00:00 | 25 | Created | Mouse Support - click, scroll interactions | AI_Agent |
 | 2026-02-05 08:02:16 | 7 | Status Change | Proposed → Agreed - Approved for task breakdown | User |
+| 2026-02-05 12:00:00 | 11 | Status Change | Proposed → Agreed - Approved for task breakdown | User |
