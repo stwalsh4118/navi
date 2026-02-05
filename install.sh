@@ -39,7 +39,7 @@ SETTINGS_FILE="$CLAUDE_CONFIG_DIR/settings.json"
 NAVI_CONFIG_FILE="$HOOKS_DIR/config.json"
 
 # Hook types that navi uses
-HOOK_TYPES=("Notification" "Stop" "PreToolUse" "SubagentStop")
+HOOK_TYPES=("Notification" "Stop" "PermissionRequest" "SubagentStop")
 
 # Read hook config from hooks/config.json shipped with navi
 HOOK_CONFIG=$(cat "$SCRIPT_DIR/hooks/config.json")
@@ -102,24 +102,34 @@ merge_hooks() {
     done
     echo ""
     echo "Options:"
-    echo "  1) Override - Replace with navi hooks (backup saved to settings.json.bak)"
-    echo "  2) Manual   - Save navi config for manual merging"
-    echo "  3) Abort    - Exit without changes"
+    echo "  1) Override - Replace ALL hooks with navi hooks only (backup saved)"
+    echo "  2) Merge    - Add navi hooks alongside existing hooks"
+    echo "  3) Manual   - Save navi config for manual merging"
+    echo "  4) Abort    - Exit without changes"
     echo ""
-    read -rp "Choose [1/2/3]: " choice
+    read -rp "Choose [1/2/3/4]: " choice
 
     case $choice in
         1)
             cp "$SETTINGS_FILE" "$SETTINGS_FILE.bak"
             echo "✓ Backup saved to $SETTINGS_FILE.bak"
-            jq -s '.[0] * .[1]' "$SETTINGS_FILE" <(echo "$HOOK_CONFIG") > "$SETTINGS_FILE.tmp"
+            # Replace hooks entirely with navi's hooks
+            jq --argjson hooks "$(echo "$HOOK_CONFIG" | jq '.hooks')" '.hooks = $hooks' "$SETTINGS_FILE" > "$SETTINGS_FILE.tmp"
             mv "$SETTINGS_FILE.tmp" "$SETTINGS_FILE"
-            echo "✓ Replaced hooks with navi configuration"
+            echo "✓ Replaced all hooks with navi configuration"
             ;;
         2)
-            save_for_manual
+            cp "$SETTINGS_FILE" "$SETTINGS_FILE.bak"
+            echo "✓ Backup saved to $SETTINGS_FILE.bak"
+            # Merge navi hooks with existing
+            jq -s '.[0] * .[1]' "$SETTINGS_FILE" <(echo "$HOOK_CONFIG") > "$SETTINGS_FILE.tmp"
+            mv "$SETTINGS_FILE.tmp" "$SETTINGS_FILE"
+            echo "✓ Merged navi hooks with existing configuration"
             ;;
         3)
+            save_for_manual
+            ;;
+        4)
             echo "Aborted. No changes made to settings.json."
             return 0
             ;;
