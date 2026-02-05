@@ -548,13 +548,13 @@ func TestE2E_FullPreviewWorkflow(t *testing.T) {
 			t.Error("Step 3: Should trigger debounce command")
 		}
 
-		// Step 4: Resize preview
+		// Step 4: Resize preview (height in bottom layout, which is now the default)
 		expandMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}}
-		oldWidth := m.getPreviewWidth()
+		oldHeight := m.getPreviewHeight()
 		newModel, _ = m.Update(expandMsg)
 		m = newModel.(Model)
-		if m.previewWidth <= oldWidth {
-			t.Error("Step 4: Preview should be wider after expansion")
+		if m.previewHeight <= oldHeight {
+			t.Error("Step 4: Preview should be taller after expansion")
 		}
 
 		// Step 5: Disable preview with 'p'

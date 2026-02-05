@@ -195,8 +195,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.previewVisible = !m.previewVisible
 			m.previewUserEnabled = m.previewVisible
 			if m.previewVisible && len(m.sessions) > 0 && m.cursor < len(m.sessions) {
-				// Enable wrap by default when showing preview
+				// Set defaults when showing preview
 				m.previewWrap = true
+				m.previewLayout = PreviewLayoutBottom // Default to bottom layout
 				// Trigger immediate capture and start polling when showing
 				m.previewLastCursor = m.cursor
 				return m, tea.Batch(
