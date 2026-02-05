@@ -438,6 +438,49 @@ func TestE2E_LayoutToggle(t *testing.T) {
 		}
 	})
 
+	t.Run("W key toggles wrap mode", func(t *testing.T) {
+		m := Model{
+			width:          120,
+			height:         24,
+			previewVisible: true,
+			previewWrap:    true,
+		}
+
+		// Press 'W' to disable wrap (enable truncate)
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'W'}}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if updated.previewWrap {
+			t.Error("W should toggle wrap off")
+		}
+
+		// Press 'W' again to enable wrap
+		newModel, _ = updated.Update(msg)
+		updated = newModel.(Model)
+
+		if !updated.previewWrap {
+			t.Error("W should toggle wrap back on")
+		}
+	})
+
+	t.Run("W key does nothing when preview hidden", func(t *testing.T) {
+		m := Model{
+			width:          120,
+			height:         24,
+			previewVisible: false,
+			previewWrap:    true,
+		}
+
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'W'}}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if !updated.previewWrap {
+			t.Error("W should not change wrap when preview hidden")
+		}
+	})
+
 	t.Run("bottom layout renders correctly", func(t *testing.T) {
 		m := Model{
 			width:  120,

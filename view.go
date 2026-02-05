@@ -95,11 +95,8 @@ func truncate(s string, maxLen int) string {
 	return s[:maxLen-3] + "..."
 }
 
-// Header and footer constants
-const (
-	headerTitle = "Claude Sessions"
-	footerHelp  = "↑/↓ nav  ⏎ attach  p preview  L layout  [/] resize  d dismiss  n new  x kill  R rename  r refresh  q quit"
-)
+// Header constant
+const headerTitle = "Claude Sessions"
 
 // renderHeader renders the header box with title and session count.
 func (m Model) renderHeader() string {
@@ -119,6 +116,20 @@ func (m Model) renderHeader() string {
 
 // renderFooter renders the footer box with keybinding help.
 func (m Model) renderFooter() string {
+	var parts []string
+
+	// Always show these
+	parts = append(parts, "↑/↓ nav", "⏎ attach", "p preview")
+
+	// Show preview-specific keys only when preview is visible
+	if m.previewVisible {
+		parts = append(parts, "L layout", "W wrap", "[/] resize")
+	}
+
+	// Always show these
+	parts = append(parts, "d dismiss", "n new", "x kill", "R rename", "r refresh", "q quit")
+
+	footerHelp := strings.Join(parts, "  ")
 	return boxStyle.Width(m.width - 2).Render(footerHelp)
 }
 
@@ -150,15 +161,28 @@ func (m Model) renderPreview(width, height int) string {
 	if m.previewContent == "" {
 		b.WriteString(previewEmptyStyle.Render("No preview available"))
 	} else {
-		// Wrap content to fit width, then take last N lines
 		contentWidth := width - 4 // Account for box padding and borders
 		if contentWidth < 10 {
 			contentWidth = 10
 		}
-		wrapped := wordwrap.String(m.previewContent, contentWidth)
+
+		var content string
+		if m.previewWrap {
+			// Wrap content to fit width
+			content = wordwrap.String(m.previewContent, contentWidth)
+		} else {
+			// Truncate long lines
+			lines := strings.Split(m.previewContent, "\n")
+			for i, line := range lines {
+				if lipgloss.Width(line) > contentWidth {
+					lines[i] = truncate(line, contentWidth)
+				}
+			}
+			content = strings.Join(lines, "\n")
+		}
 
 		// Split into lines and limit to available height
-		lines := strings.Split(wrapped, "\n")
+		lines := strings.Split(content, "\n")
 		// Reserve space for header (1 line) and box borders (2 lines)
 		maxLines := height - 5
 		if maxLines < 1 {

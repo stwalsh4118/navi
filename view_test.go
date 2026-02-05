@@ -192,17 +192,39 @@ func TestRenderHeader(t *testing.T) {
 }
 
 func TestRenderFooter(t *testing.T) {
-	// Use wider terminal to fit all keybindings
-	m := Model{width: 120, height: 24}
-	result := m.renderFooter()
+	t.Run("shows base keys when preview hidden", func(t *testing.T) {
+		m := Model{width: 120, height: 24, previewVisible: false}
+		result := m.renderFooter()
 
-	// Check that all keybindings are present
-	expectedKeys := []string{"nav", "attach", "dismiss", "quit", "refresh"}
-	for _, key := range expectedKeys {
-		if !strings.Contains(result, key) {
-			t.Errorf("footer should contain keybinding %q", key)
+		// Check base keybindings are present
+		expectedKeys := []string{"nav", "attach", "preview", "dismiss", "quit", "refresh"}
+		for _, key := range expectedKeys {
+			if !strings.Contains(result, key) {
+				t.Errorf("footer should contain keybinding %q", key)
+			}
 		}
-	}
+
+		// Preview-specific keys should NOT be present
+		unexpectedKeys := []string{"layout", "wrap", "resize"}
+		for _, key := range unexpectedKeys {
+			if strings.Contains(result, key) {
+				t.Errorf("footer should NOT contain %q when preview hidden", key)
+			}
+		}
+	})
+
+	t.Run("shows preview keys when preview visible", func(t *testing.T) {
+		m := Model{width: 120, height: 24, previewVisible: true}
+		result := m.renderFooter()
+
+		// Check all keybindings including preview-specific ones
+		expectedKeys := []string{"nav", "attach", "preview", "layout", "wrap", "resize", "dismiss", "quit"}
+		for _, key := range expectedKeys {
+			if !strings.Contains(result, key) {
+				t.Errorf("footer should contain keybinding %q when preview visible", key)
+			}
+		}
+	})
 }
 
 func TestRenderPreview(t *testing.T) {

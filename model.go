@@ -48,6 +48,7 @@ type Model struct {
 	previewLayout      PreviewLayout // Current layout mode (default: PreviewLayoutSide)
 	previewWidth       int           // Width of preview pane in columns (side layout)
 	previewHeight      int           // Height of preview pane in rows (bottom layout)
+	previewWrap        bool          // Whether to wrap long lines (true) or truncate (false)
 	previewLastCapture time.Time     // Last capture timestamp for debouncing
 	previewLastCursor  int           // Last cursor position for detecting cursor changes
 }
@@ -194,6 +195,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.previewVisible = !m.previewVisible
 			m.previewUserEnabled = m.previewVisible
 			if m.previewVisible && len(m.sessions) > 0 && m.cursor < len(m.sessions) {
+				// Enable wrap by default when showing preview
+				m.previewWrap = true
 				// Trigger immediate capture and start polling when showing
 				m.previewLastCursor = m.cursor
 				return m, tea.Batch(
@@ -262,6 +265,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else {
 					m.previewLayout = PreviewLayoutSide
 				}
+			}
+			return m, nil
+
+		case "W":
+			// Toggle preview wrap mode
+			if m.previewVisible {
+				m.previewWrap = !m.previewWrap
 			}
 			return m, nil
 
