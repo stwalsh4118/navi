@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -20,11 +21,12 @@ type SessionInfo struct {
 
 // Model is the Bubble Tea application state for navi.
 type Model struct {
-	sessions []SessionInfo
-	cursor   int
-	width    int
-	height   int
-	err      error
+	sessions            []SessionInfo
+	cursor              int
+	width               int
+	height              int
+	err                 error
+	lastSelectedSession string // Used to preserve cursor position after attach/detach
 }
 
 // Message types for Bubble Tea communication.
@@ -43,6 +45,45 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
+		case "up", "k":
+			if len(m.sessions) > 0 {
+				if m.cursor > 0 {
+					m.cursor--
+				} else {
+					m.cursor = len(m.sessions) - 1 // wrap to bottom
+				}
+			}
+			return m, nil
+
+		case "down", "j":
+			if len(m.sessions) > 0 {
+				if m.cursor < len(m.sessions)-1 {
+					m.cursor++
+				} else {
+					m.cursor = 0 // wrap to top
+				}
+			}
+			return m, nil
+
+		case "enter":
+			if len(m.sessions) > 0 && m.cursor < len(m.sessions) {
+				session := m.sessions[m.cursor]
+				m.lastSelectedSession = session.TmuxSession
+				return m, attachSession(session.TmuxSession)
+			}
+			return m, nil
+
+		case "d":
+			if len(m.sessions) > 0 && m.cursor < len(m.sessions) {
+				session := m.sessions[m.cursor]
+				_ = dismissSession(session) // Ignore error, poll will update view
+				return m, pollSessions
+			}
+			return m, nil
+
+		case "r":
+			return m, pollSessions
+
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		}
@@ -54,6 +95,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case sessionsMsg:
 		// Update sessions list
 		m.sessions = msg
+
+		// Try to restore cursor to last selected session if set
+		if m.lastSelectedSession != "" {
+			for i, s := range m.sessions {
+				if s.TmuxSession == m.lastSelectedSession {
+					m.cursor = i
+					m.lastSelectedSession = "" // Clear after restoring
+					return m, nil
+				}
+			}
+			m.lastSelectedSession = "" // Session no longer exists, clear it
+		}
+
 		// Clamp cursor if sessions list shrunk
 		if m.cursor >= len(m.sessions) && len(m.sessions) > 0 {
 			m.cursor = len(m.sessions) - 1
@@ -64,6 +118,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+
+	case attachDoneMsg:
+		// After returning from tmux, trigger immediate refresh
+		return m, pollSessions
 	}
 	return m, nil
 }
@@ -101,4 +159,13 @@ func (m Model) View() string {
 	b.WriteString(m.renderFooter())
 
 	return b.String()
+}
+
+// attachSession returns a command that attaches to a tmux session.
+// Uses tea.ExecProcess to hand off terminal control to tmux.
+func attachSession(name string) tea.Cmd {
+	c := exec.Command("tmux", "attach-session", "-t", name)
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		return attachDoneMsg{}
+	})
 }

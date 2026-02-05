@@ -101,6 +101,7 @@ const (
 	statusDir        = "~/.claude-sessions"
 	statusWaiting    = "waiting"
 	statusPermission = "permission"
+	statusWorking    = "working"
 )
 
 // sortSessions sorts sessions with priority statuses (waiting, permission) first,
@@ -157,4 +158,23 @@ func expandPath(path string) string {
 		return filepath.Join(home, path[2:])
 	}
 	return path
+}
+
+// dismissSession writes the session status as "working" to dismiss its notification.
+// This clears the message and updates the timestamp.
+func dismissSession(session SessionInfo) error {
+	dir := expandPath(statusDir)
+	path := filepath.Join(dir, session.TmuxSession+".json")
+
+	// Update status to working
+	session.Status = statusWorking
+	session.Message = ""
+	session.Timestamp = time.Now().Unix()
+
+	data, err := json.MarshalIndent(session, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(path, data, 0644)
 }
