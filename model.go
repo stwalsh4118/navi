@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -66,7 +68,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// Empty state message constant
+const noSessionsMessage = "  No active sessions"
+
 // View implements tea.Model.
 func (m Model) View() string {
-	return "Navi\n\nPress q to quit.\n"
+	if m.err != nil {
+		return fmt.Sprintf("Error: %v\n\nPress q to quit.", m.err)
+	}
+
+	var b strings.Builder
+
+	// Header
+	b.WriteString(m.renderHeader())
+	b.WriteString("\n\n")
+
+	// Session list
+	if len(m.sessions) == 0 {
+		b.WriteString(dimStyle.Render(noSessionsMessage))
+		b.WriteString("\n")
+	} else {
+		for i, session := range m.sessions {
+			selected := i == m.cursor
+			b.WriteString(m.renderSession(session, selected, m.width))
+			b.WriteString("\n")
+		}
+	}
+
+	b.WriteString("\n")
+
+	// Footer
+	b.WriteString(m.renderFooter())
+
+	return b.String()
 }
