@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/reflow/wordwrap"
 )
 
 // Selection marker constants
@@ -149,8 +150,15 @@ func (m Model) renderPreview(width, height int) string {
 	if m.previewContent == "" {
 		b.WriteString(previewEmptyStyle.Render("No preview available"))
 	} else {
-		// Split content into lines and limit to available height
-		lines := strings.Split(m.previewContent, "\n")
+		// Wrap content to fit width, then take last N lines
+		contentWidth := width - 4 // Account for box padding and borders
+		if contentWidth < 10 {
+			contentWidth = 10
+		}
+		wrapped := wordwrap.String(m.previewContent, contentWidth)
+
+		// Split into lines and limit to available height
+		lines := strings.Split(wrapped, "\n")
 		// Reserve space for header (1 line) and box borders (2 lines)
 		maxLines := height - 5
 		if maxLines < 1 {
@@ -158,14 +166,6 @@ func (m Model) renderPreview(width, height int) string {
 		}
 		if len(lines) > maxLines {
 			lines = lines[len(lines)-maxLines:]
-		}
-
-		// Truncate long lines to fit width
-		contentWidth := width - 4 // Account for box padding and borders
-		for i, line := range lines {
-			if lipgloss.Width(line) > contentWidth {
-				lines[i] = truncate(line, contentWidth)
-			}
 		}
 
 		b.WriteString(strings.Join(lines, "\n"))
