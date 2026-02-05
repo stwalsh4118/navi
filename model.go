@@ -31,8 +31,9 @@ type sessionsMsg []SessionInfo
 type attachDoneMsg struct{}
 
 // Init implements tea.Model.
+// Starts the tick command and performs initial poll.
 func (m Model) Init() tea.Cmd {
-	return nil
+	return tea.Batch(tickCmd(), pollSessions)
 }
 
 // Update implements tea.Model.
@@ -43,6 +44,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		}
+
+	case tickMsg:
+		// On tick, poll sessions and schedule next tick
+		return m, tea.Batch(pollSessions, tickCmd())
+
+	case sessionsMsg:
+		// Update sessions list
+		m.sessions = msg
+		// Clamp cursor if sessions list shrunk
+		if m.cursor >= len(m.sessions) && len(m.sessions) > 0 {
+			m.cursor = len(m.sessions) - 1
+		} else if len(m.sessions) == 0 {
+			m.cursor = 0
+		}
+
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
 	}
 	return m, nil
 }
