@@ -32,8 +32,17 @@ const (
 	// sessionListMinWidth is the minimum width for the session list when preview is shown
 	sessionListMinWidth = 30
 
-	// previewResizeStep is the number of columns to resize by per keypress
+	// previewResizeStep is the number of columns/rows to resize by per keypress
 	previewResizeStep = 5
+
+	// previewMinHeight is the minimum height for the preview pane in rows (bottom layout)
+	previewMinHeight = 5
+
+	// previewDefaultHeightPercent is the default preview height as percentage of terminal (bottom layout)
+	previewDefaultHeightPercent = 40
+
+	// sessionListMinHeight is the minimum height for the session list when preview is shown (bottom layout)
+	sessionListMinHeight = 5
 )
 
 // Preview timing constants

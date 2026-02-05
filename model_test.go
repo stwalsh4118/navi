@@ -40,7 +40,7 @@ func TestView(t *testing.T) {
 		}
 
 		// Should contain footer help
-		if !strings.Contains(result, "navigate") {
+		if !strings.Contains(result, "nav") {
 			t.Error("view should contain footer keybindings")
 		}
 	})

@@ -46,7 +46,8 @@ type Model struct {
 	previewUserEnabled bool          // User's intended state (for restore after terminal resize)
 	previewContent     string        // Cached captured output
 	previewLayout      PreviewLayout // Current layout mode (default: PreviewLayoutSide)
-	previewWidth       int           // Width of preview pane in columns
+	previewWidth       int           // Width of preview pane in columns (side layout)
+	previewHeight      int           // Height of preview pane in rows (bottom layout)
 	previewLastCapture time.Time     // Last capture timestamp for debouncing
 	previewLastCursor  int           // Last cursor position for detecting cursor changes
 }
@@ -207,25 +208,60 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "[":
 			// Shrink preview pane
 			if m.previewVisible {
-				currentWidth := m.getPreviewWidth()
-				newWidth := currentWidth - previewResizeStep
-				if newWidth < previewMinWidth {
-					newWidth = previewMinWidth
+				if m.previewLayout == PreviewLayoutBottom {
+					// Shrink height in bottom layout
+					currentHeight := m.getPreviewHeight()
+					newHeight := currentHeight - previewResizeStep
+					if newHeight < previewMinHeight {
+						newHeight = previewMinHeight
+					}
+					m.previewHeight = newHeight
+				} else {
+					// Shrink width in side layout
+					currentWidth := m.getPreviewWidth()
+					newWidth := currentWidth - previewResizeStep
+					if newWidth < previewMinWidth {
+						newWidth = previewMinWidth
+					}
+					m.previewWidth = newWidth
 				}
-				m.previewWidth = newWidth
 			}
 			return m, nil
 
 		case "]":
 			// Expand preview pane
 			if m.previewVisible {
-				currentWidth := m.getPreviewWidth()
-				maxWidth := m.width - sessionListMinWidth - 1 // -1 for gap
-				newWidth := currentWidth + previewResizeStep
-				if newWidth > maxWidth {
-					newWidth = maxWidth
+				if m.previewLayout == PreviewLayoutBottom {
+					// Expand height in bottom layout
+					contentHeight := m.height - 8 // Same calculation as View()
+					maxHeight := contentHeight - sessionListMinHeight
+					currentHeight := m.getPreviewHeight()
+					newHeight := currentHeight + previewResizeStep
+					if newHeight > maxHeight {
+						newHeight = maxHeight
+					}
+					m.previewHeight = newHeight
+				} else {
+					// Expand width in side layout
+					currentWidth := m.getPreviewWidth()
+					maxWidth := m.width - sessionListMinWidth - 1 // -1 for gap
+					newWidth := currentWidth + previewResizeStep
+					if newWidth > maxWidth {
+						newWidth = maxWidth
+					}
+					m.previewWidth = newWidth
 				}
-				m.previewWidth = newWidth
+			}
+			return m, nil
+
+		case "L":
+			// Toggle preview layout between side and bottom
+			if m.previewVisible {
+				if m.previewLayout == PreviewLayoutSide {
+					m.previewLayout = PreviewLayoutBottom
+				} else {
+					m.previewLayout = PreviewLayoutSide
+				}
 			}
 			return m, nil
 
@@ -378,18 +414,38 @@ func (m Model) View() string {
 		contentHeight = 5
 	}
 
-	// Calculate widths for side-by-side layout
-	previewWidth := m.getPreviewWidth()
-	sessionListWidth := m.width - previewWidth - 1 // -1 for gap
-
 	if m.previewVisible && m.width >= previewMinTerminalWidth {
-		// Side-by-side layout: sessions on left, preview on right
-		sessionList := m.renderSessionList(sessionListWidth)
-		preview := m.renderPreview(previewWidth, contentHeight)
+		if m.previewLayout == PreviewLayoutBottom {
+			// Bottom layout: sessions on top, preview on bottom
+			previewHeight := m.getPreviewHeight()
+			sessionListHeight := contentHeight - previewHeight - 1 // -1 for gap
 
-		// Join horizontally with a gap
-		combined := lipgloss.JoinHorizontal(lipgloss.Top, sessionList, " ", preview)
-		b.WriteString(combined)
+			sessionList := m.renderSessionList(m.width)
+			preview := m.renderPreview(m.width, previewHeight)
+
+			// Limit session list height
+			sessionLines := strings.Split(sessionList, "\n")
+			if len(sessionLines) > sessionListHeight {
+				sessionLines = sessionLines[:sessionListHeight]
+			}
+			sessionList = strings.Join(sessionLines, "\n")
+
+			// Join vertically
+			b.WriteString(sessionList)
+			b.WriteString("\n")
+			b.WriteString(preview)
+		} else {
+			// Side layout: sessions on left, preview on right
+			previewWidth := m.getPreviewWidth()
+			sessionListWidth := m.width - previewWidth - 1 // -1 for gap
+
+			sessionList := m.renderSessionList(sessionListWidth)
+			preview := m.renderPreview(previewWidth, contentHeight)
+
+			// Join horizontally with a gap
+			combined := lipgloss.JoinHorizontal(lipgloss.Top, sessionList, " ", preview)
+			b.WriteString(combined)
+		}
 	} else {
 		// Standard layout: just session list
 		b.WriteString(m.renderSessionList(m.width))
@@ -409,13 +465,23 @@ func (m Model) View() string {
 	return b.String()
 }
 
-// getPreviewWidth returns the width to use for the preview pane.
+// getPreviewWidth returns the width to use for the preview pane (side layout).
 func (m Model) getPreviewWidth() int {
 	if m.previewWidth > 0 {
 		return m.previewWidth
 	}
 	// Default to percentage of terminal width
 	return m.width * previewDefaultWidthPercent / 100
+}
+
+// getPreviewHeight returns the height to use for the preview pane (bottom layout).
+func (m Model) getPreviewHeight() int {
+	if m.previewHeight > 0 {
+		return m.previewHeight
+	}
+	// Default to percentage of available content height
+	contentHeight := m.height - 8
+	return contentHeight * previewDefaultHeightPercent / 100
 }
 
 // attachSession returns a command that attaches to a tmux session.

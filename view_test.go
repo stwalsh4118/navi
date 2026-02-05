@@ -197,7 +197,7 @@ func TestRenderFooter(t *testing.T) {
 	result := m.renderFooter()
 
 	// Check that all keybindings are present
-	expectedKeys := []string{"navigate", "attach", "dismiss", "quit", "refresh"}
+	expectedKeys := []string{"nav", "attach", "dismiss", "quit", "refresh"}
 	for _, key := range expectedKeys {
 		if !strings.Contains(result, key) {
 			t.Errorf("footer should contain keybinding %q", key)

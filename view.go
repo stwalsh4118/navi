@@ -97,7 +97,7 @@ func truncate(s string, maxLen int) string {
 // Header and footer constants
 const (
 	headerTitle = "Claude Sessions"
-	footerHelp  = "↑/↓ navigate  ⏎ attach  p preview  [/] resize  d dismiss  n new  x kill  R rename  r refresh  q quit"
+	footerHelp  = "↑/↓ nav  ⏎ attach  p preview  L layout  [/] resize  d dismiss  n new  x kill  R rename  r refresh  q quit"
 )
 
 // renderHeader renders the header box with title and session count.

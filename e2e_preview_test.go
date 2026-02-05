@@ -365,6 +365,104 @@ func TestE2E_AC8_NarrowTerminal(t *testing.T) {
 	})
 }
 
+// AC9: Layout toggle (additional feature)
+func TestE2E_LayoutToggle(t *testing.T) {
+	t.Run("L key toggles between side and bottom layout", func(t *testing.T) {
+		m := Model{
+			width:          120,
+			height:         24,
+			previewVisible: true,
+			previewLayout:  PreviewLayoutSide,
+		}
+
+		// Press 'L' to switch to bottom
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'L'}}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if updated.previewLayout != PreviewLayoutBottom {
+			t.Error("L should switch to bottom layout")
+		}
+
+		// Press 'L' again to switch back to side
+		newModel, _ = updated.Update(msg)
+		updated = newModel.(Model)
+
+		if updated.previewLayout != PreviewLayoutSide {
+			t.Error("L should switch back to side layout")
+		}
+	})
+
+	t.Run("L key does nothing when preview hidden", func(t *testing.T) {
+		m := Model{
+			width:          120,
+			height:         24,
+			previewVisible: false,
+			previewLayout:  PreviewLayoutSide,
+		}
+
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'L'}}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if updated.previewLayout != PreviewLayoutSide {
+			t.Error("L should not change layout when preview hidden")
+		}
+	})
+
+	t.Run("resize adjusts height in bottom layout", func(t *testing.T) {
+		m := Model{
+			width:          120,
+			height:         30,
+			previewVisible: true,
+			previewLayout:  PreviewLayoutBottom,
+			previewHeight:  10,
+		}
+
+		// Press ']' to expand height
+		expandMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}}
+		newModel, _ := m.Update(expandMsg)
+		updated := newModel.(Model)
+
+		if updated.previewHeight <= 10 {
+			t.Error("']' should expand preview height in bottom layout")
+		}
+
+		// Press '[' to shrink height
+		shrinkMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'['}}
+		newModel, _ = updated.Update(shrinkMsg)
+		updated = newModel.(Model)
+
+		if updated.previewHeight >= 15 {
+			t.Error("'[' should shrink preview height in bottom layout")
+		}
+	})
+
+	t.Run("bottom layout renders correctly", func(t *testing.T) {
+		m := Model{
+			width:  120,
+			height: 30,
+			sessions: []SessionInfo{
+				{TmuxSession: "test-session", Status: "working", CWD: "/tmp"},
+			},
+			cursor:         0,
+			previewVisible: true,
+			previewLayout:  PreviewLayoutBottom,
+			previewContent: "some output",
+		}
+
+		result := m.View()
+
+		// Should contain both session and preview content
+		if !strings.Contains(result, "test-session") {
+			t.Error("bottom layout should show session")
+		}
+		if !strings.Contains(result, "some output") {
+			t.Error("bottom layout should show preview content")
+		}
+	})
+}
+
 // Integration test: Full preview workflow
 func TestE2E_FullPreviewWorkflow(t *testing.T) {
 	t.Run("complete preview enable/use/resize/disable cycle", func(t *testing.T) {
