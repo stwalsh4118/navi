@@ -158,20 +158,14 @@ func (m Model) renderPreview(width, height int) string {
 	b.WriteString("\n")
 
 	// Content area
-	// Calculate max lines: height - borders(2) - header(1) - padding for safety(1)
-	maxLines := height - 4
-	if maxLines < 1 {
-		maxLines = 1
+	contentWidth := width - 4 // Account for box padding and borders
+	if contentWidth < 10 {
+		contentWidth = 10
 	}
 
 	if m.previewContent == "" {
 		b.WriteString(previewEmptyStyle.Render("No preview available"))
 	} else {
-		contentWidth := width - 4 // Account for box padding and borders
-		if contentWidth < 10 {
-			contentWidth = 10
-		}
-
 		var content string
 		if m.previewWrap {
 			// Wrap content to fit width
@@ -187,6 +181,12 @@ func (m Model) renderPreview(width, height int) string {
 			content = strings.Join(lines, "\n")
 		}
 
+		// Calculate max content lines: total height - borders(2) - header(1)
+		maxLines := height - 3
+		if maxLines < 1 {
+			maxLines = 1
+		}
+
 		// Split into lines and limit to available height
 		lines := strings.Split(content, "\n")
 		if len(lines) > maxLines {
@@ -196,9 +196,20 @@ func (m Model) renderPreview(width, height int) string {
 		b.WriteString(strings.Join(lines, "\n"))
 	}
 
-	// Apply box style - don't use Height() as it doesn't clip, just pads
-	content := b.String()
-	return previewBoxStyle.Width(width - 2).Render(content)
+	// Render the box
+	boxContent := b.String()
+	rendered := previewBoxStyle.Width(width - 2).Render(boxContent)
+
+	// Ensure the final output is exactly `height` lines by truncating or padding
+	renderedLines := strings.Split(rendered, "\n")
+	if len(renderedLines) > height {
+		renderedLines = renderedLines[:height]
+	}
+	for len(renderedLines) < height {
+		renderedLines = append(renderedLines, "")
+	}
+
+	return strings.Join(renderedLines, "\n")
 }
 
 // renderSessionList renders the session list portion of the view.
