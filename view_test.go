@@ -315,3 +315,439 @@ func TestViewWithPreview(t *testing.T) {
 		}
 	})
 }
+
+func TestRenderGitInfo(t *testing.T) {
+	t.Run("returns empty string for nil git info", func(t *testing.T) {
+		result := renderGitInfo(nil, 80)
+		if result != "" {
+			t.Errorf("renderGitInfo(nil) = %q, want empty string", result)
+		}
+	})
+
+	t.Run("shows branch name", func(t *testing.T) {
+		git := &GitInfo{Branch: "main"}
+		result := renderGitInfo(git, 80)
+		if !strings.Contains(result, "main") {
+			t.Errorf("renderGitInfo should contain branch name, got %q", result)
+		}
+	})
+
+	t.Run("shows dirty indicator when dirty", func(t *testing.T) {
+		git := &GitInfo{Branch: "main", Dirty: true}
+		result := renderGitInfo(git, 80)
+		if !strings.Contains(result, gitDirtyIndicator) {
+			t.Errorf("renderGitInfo should contain dirty indicator, got %q", result)
+		}
+	})
+
+	t.Run("hides dirty indicator when clean", func(t *testing.T) {
+		git := &GitInfo{Branch: "main", Dirty: false}
+		result := renderGitInfo(git, 80)
+		if strings.Contains(result, gitDirtyIndicator) {
+			t.Errorf("renderGitInfo should not contain dirty indicator when clean, got %q", result)
+		}
+	})
+
+	t.Run("shows ahead count when ahead", func(t *testing.T) {
+		git := &GitInfo{Branch: "main", Ahead: 3}
+		result := renderGitInfo(git, 80)
+		if !strings.Contains(result, "+3") {
+			t.Errorf("renderGitInfo should contain ahead count, got %q", result)
+		}
+	})
+
+	t.Run("shows behind count when behind", func(t *testing.T) {
+		git := &GitInfo{Branch: "main", Behind: 2}
+		result := renderGitInfo(git, 80)
+		if !strings.Contains(result, "-2") {
+			t.Errorf("renderGitInfo should contain behind count, got %q", result)
+		}
+	})
+
+	t.Run("shows PR number when detected", func(t *testing.T) {
+		git := &GitInfo{Branch: "feature/add-auth", PRNum: 42}
+		result := renderGitInfo(git, 80)
+		if !strings.Contains(result, "[PR#42]") {
+			t.Errorf("renderGitInfo should contain PR number, got %q", result)
+		}
+	})
+
+	t.Run("truncates long branch names", func(t *testing.T) {
+		git := &GitInfo{Branch: "feature/this-is-a-very-long-branch-name-that-should-be-truncated"}
+		result := renderGitInfo(git, 80)
+		// The branch should be truncated to gitMaxBranchLength (30) characters
+		if strings.Contains(result, "that-should-be-truncated") {
+			t.Errorf("renderGitInfo should truncate long branch names, got %q", result)
+		}
+		if !strings.Contains(result, "...") {
+			t.Errorf("renderGitInfo should show ellipsis for truncated branch, got %q", result)
+		}
+	})
+}
+
+func TestRenderGitDetailView(t *testing.T) {
+	t.Run("shows not a git repo message when no git info", func(t *testing.T) {
+		m := Model{
+			width:      80,
+			height:     24,
+			dialogMode: DialogGitDetail,
+			sessionToModify: &SessionInfo{
+				TmuxSession: "test",
+				CWD:         "/tmp",
+				Git:         nil,
+			},
+		}
+
+		result := m.renderGitDetailView()
+		if !strings.Contains(result, "Not a git repository") {
+			t.Error("should show 'Not a git repository' message")
+		}
+	})
+
+	t.Run("shows branch name", func(t *testing.T) {
+		m := Model{
+			width:      80,
+			height:     24,
+			dialogMode: DialogGitDetail,
+			sessionToModify: &SessionInfo{
+				TmuxSession: "test",
+				CWD:         "/tmp",
+				Git: &GitInfo{
+					Branch: "feature/auth",
+				},
+			},
+		}
+
+		result := m.renderGitDetailView()
+		if !strings.Contains(result, "feature/auth") {
+			t.Error("should show branch name")
+		}
+	})
+
+	t.Run("shows dirty status", func(t *testing.T) {
+		m := Model{
+			width:      80,
+			height:     24,
+			dialogMode: DialogGitDetail,
+			sessionToModify: &SessionInfo{
+				TmuxSession: "test",
+				CWD:         "/tmp",
+				Git: &GitInfo{
+					Branch: "main",
+					Dirty:  true,
+				},
+			},
+		}
+
+		result := m.renderGitDetailView()
+		if !strings.Contains(result, "uncommitted changes") {
+			t.Error("should show dirty status message")
+		}
+	})
+
+	t.Run("shows clean status", func(t *testing.T) {
+		m := Model{
+			width:      80,
+			height:     24,
+			dialogMode: DialogGitDetail,
+			sessionToModify: &SessionInfo{
+				TmuxSession: "test",
+				CWD:         "/tmp",
+				Git: &GitInfo{
+					Branch: "main",
+					Dirty:  false,
+				},
+			},
+		}
+
+		result := m.renderGitDetailView()
+		if !strings.Contains(result, "(clean)") {
+			t.Error("should show clean status")
+		}
+	})
+
+	t.Run("shows ahead/behind counts", func(t *testing.T) {
+		m := Model{
+			width:      80,
+			height:     24,
+			dialogMode: DialogGitDetail,
+			sessionToModify: &SessionInfo{
+				TmuxSession: "test",
+				CWD:         "/tmp",
+				Git: &GitInfo{
+					Branch: "main",
+					Ahead:  3,
+					Behind: 2,
+				},
+			},
+		}
+
+		result := m.renderGitDetailView()
+		if !strings.Contains(result, "3 ahead") {
+			t.Error("should show ahead count")
+		}
+		if !strings.Contains(result, "2 behind") {
+			t.Error("should show behind count")
+		}
+	})
+
+	t.Run("shows PR number and link", func(t *testing.T) {
+		m := Model{
+			width:      80,
+			height:     24,
+			dialogMode: DialogGitDetail,
+			sessionToModify: &SessionInfo{
+				TmuxSession: "test",
+				CWD:         "/tmp",
+				Git: &GitInfo{
+					Branch: "feature/auth",
+					PRNum:  123,
+					Remote: "https://github.com/user/repo.git",
+				},
+			},
+		}
+
+		result := m.renderGitDetailView()
+		if !strings.Contains(result, "#123") {
+			t.Error("should show PR number")
+		}
+		if !strings.Contains(result, "github.com") {
+			t.Error("should show GitHub link")
+		}
+	})
+
+	t.Run("shows keybindings", func(t *testing.T) {
+		m := Model{
+			width:      80,
+			height:     24,
+			dialogMode: DialogGitDetail,
+			sessionToModify: &SessionInfo{
+				TmuxSession: "test",
+				CWD:         "/tmp",
+				Git: &GitInfo{
+					Branch: "main",
+				},
+			},
+		}
+
+		result := m.renderGitDetailView()
+		if !strings.Contains(result, "Esc: close") {
+			t.Error("should show Esc keybinding")
+		}
+		if !strings.Contains(result, "d: diff") {
+			t.Error("should show diff keybinding")
+		}
+	})
+}
+
+func TestRenderSessionWithGitInfo(t *testing.T) {
+	m := Model{width: 80, height: 24}
+
+	t.Run("session without git info has no git line", func(t *testing.T) {
+		session := SessionInfo{
+			TmuxSession: "test",
+			Status:      "working",
+			CWD:         "/tmp",
+			Timestamp:   time.Now().Unix(),
+			Git:         nil,
+		}
+
+		result := m.renderSession(session, false, 80)
+		lines := strings.Split(result, "\n")
+
+		// Should have 2 lines: name+status, cwd
+		if len(lines) != 2 {
+			t.Errorf("session without git should have 2 lines, got %d: %v", len(lines), lines)
+		}
+	})
+
+	t.Run("session with git info shows git line", func(t *testing.T) {
+		session := SessionInfo{
+			TmuxSession: "test",
+			Status:      "working",
+			CWD:         "/tmp",
+			Timestamp:   time.Now().Unix(),
+			Git: &GitInfo{
+				Branch: "main",
+				Dirty:  true,
+			},
+		}
+
+		result := m.renderSession(session, false, 80)
+		if !strings.Contains(result, "main") {
+			t.Error("session with git info should show branch name")
+		}
+		if !strings.Contains(result, gitDirtyIndicator) {
+			t.Error("session with dirty git should show dirty indicator")
+		}
+	})
+
+	t.Run("session with git info and message shows both", func(t *testing.T) {
+		session := SessionInfo{
+			TmuxSession: "test",
+			Status:      "working",
+			CWD:         "/tmp",
+			Message:     "Processing...",
+			Timestamp:   time.Now().Unix(),
+			Git: &GitInfo{
+				Branch: "feature/auth",
+				Dirty:  false,
+				Ahead:  2,
+			},
+		}
+
+		result := m.renderSession(session, false, 80)
+		lines := strings.Split(result, "\n")
+
+		// Should have 4 lines: name+status, cwd, git, message
+		if len(lines) != 4 {
+			t.Errorf("session with git and message should have 4 lines, got %d", len(lines))
+		}
+		if !strings.Contains(result, "feature/auth") {
+			t.Error("should show branch name")
+		}
+		if !strings.Contains(result, "+2") {
+			t.Error("should show ahead count")
+		}
+		if !strings.Contains(result, "Processing...") {
+			t.Error("should show message")
+		}
+	})
+}
+
+func TestRenderGitDiffView(t *testing.T) {
+	t.Run("shows no git info message when no session", func(t *testing.T) {
+		m := Model{
+			width:           80,
+			height:          24,
+			dialogMode:      DialogGitDiff,
+			sessionToModify: nil,
+		}
+
+		result := m.renderGitDiffView()
+		if !strings.Contains(result, "No git information available") {
+			t.Error("should show 'No git information available' message")
+		}
+	})
+
+	t.Run("shows no git info message when git is nil", func(t *testing.T) {
+		m := Model{
+			width:      80,
+			height:     24,
+			dialogMode: DialogGitDiff,
+			sessionToModify: &SessionInfo{
+				TmuxSession: "test",
+				CWD:         "/tmp",
+				Git:         nil,
+			},
+		}
+
+		result := m.renderGitDiffView()
+		if !strings.Contains(result, "No git information available") {
+			t.Error("should show 'No git information available' message")
+		}
+	})
+
+	t.Run("shows branch name", func(t *testing.T) {
+		m := Model{
+			width:      80,
+			height:     24,
+			dialogMode: DialogGitDiff,
+			sessionToModify: &SessionInfo{
+				TmuxSession: "test",
+				CWD:         "/",  // Non-git dir for predictable output
+				Git: &GitInfo{
+					Branch: "feature/test",
+					Dirty:  false,
+				},
+			},
+		}
+
+		result := m.renderGitDiffView()
+		if !strings.Contains(result, "feature/test") {
+			t.Error("should show branch name")
+		}
+	})
+
+	t.Run("shows clean message when not dirty and no changes", func(t *testing.T) {
+		m := Model{
+			width:      80,
+			height:     24,
+			dialogMode: DialogGitDiff,
+			sessionToModify: &SessionInfo{
+				TmuxSession: "test",
+				CWD:         "/",  // Non-git dir - no diff output
+				Git: &GitInfo{
+					Branch: "main",
+					Dirty:  false,
+				},
+			},
+		}
+
+		result := m.renderGitDiffView()
+		if !strings.Contains(result, "Working tree clean") {
+			t.Error("should show clean working tree message")
+		}
+	})
+
+	t.Run("shows dirty indicator when dirty", func(t *testing.T) {
+		m := Model{
+			width:      80,
+			height:     24,
+			dialogMode: DialogGitDiff,
+			sessionToModify: &SessionInfo{
+				TmuxSession: "test",
+				CWD:         "/",  // Non-git dir for testing
+				Git: &GitInfo{
+					Branch: "main",
+					Dirty:  true,
+				},
+			},
+		}
+
+		result := m.renderGitDiffView()
+		if !strings.Contains(result, gitDirtyIndicator) {
+			t.Error("should show dirty indicator")
+		}
+	})
+
+	t.Run("shows back keybinding", func(t *testing.T) {
+		m := Model{
+			width:      80,
+			height:     24,
+			dialogMode: DialogGitDiff,
+			sessionToModify: &SessionInfo{
+				TmuxSession: "test",
+				CWD:         "/tmp",
+				Git: &GitInfo{
+					Branch: "main",
+				},
+			},
+		}
+
+		result := m.renderGitDiffView()
+		if !strings.Contains(result, "Esc: back") {
+			t.Error("should show Esc keybinding")
+		}
+	})
+
+	t.Run("shows title", func(t *testing.T) {
+		m := Model{
+			width:      80,
+			height:     24,
+			dialogMode: DialogGitDiff,
+			sessionToModify: &SessionInfo{
+				TmuxSession: "test",
+				CWD:         "/tmp",
+				Git: &GitInfo{
+					Branch: "main",
+				},
+			},
+		}
+
+		result := m.renderGitDiffView()
+		if !strings.Contains(result, "Git Changes") {
+			t.Error("should show 'Git Changes' title")
+		}
+	})
+}

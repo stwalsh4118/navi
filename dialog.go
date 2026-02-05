@@ -9,6 +9,8 @@ const (
 	DialogNewSession                    // New session creation dialog
 	DialogKillConfirm                   // Kill session confirmation dialog
 	DialogRename                        // Rename session dialog
+	DialogGitDetail                     // Git detail view dialog
+	DialogGitDiff                       // Git diff view dialog
 )
 
 // dialogTitle returns the title for a given dialog mode.
@@ -20,6 +22,10 @@ func dialogTitle(mode DialogMode) string {
 		return "Kill Session"
 	case DialogRename:
 		return "Rename Session"
+	case DialogGitDetail:
+		return "Git Information"
+	case DialogGitDiff:
+		return "Git Changes"
 	default:
 		return ""
 	}
