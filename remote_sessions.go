@@ -57,11 +57,14 @@ func pollRemoteSessions(pool *SSHPool, remotes []RemoteConfig) []SessionInfo {
 	for result := range results {
 		if result.Error != nil {
 			// Log error but continue - one remote failing shouldn't stop others
+			debugLog("remote[%s]: poll error: %v", result.RemoteName, result.Error)
 			continue
 		}
+		debugLog("remote[%s]: got %d sessions", result.RemoteName, len(result.Sessions))
 		allSessions = append(allSessions, result.Sessions...)
 	}
 
+	debugLog("pollRemoteSessions: total %d sessions from %d remotes", len(allSessions), len(remotes))
 	return allSessions
 }
 
@@ -78,14 +81,21 @@ func pollSingleRemote(pool *SSHPool, remote RemoteConfig) ([]SessionInfo, error)
 	// The 2>/dev/null suppresses "No such file" errors when no sessions exist
 	cmd := fmt.Sprintf("cat %s/*.json 2>/dev/null || true", sessionsDir)
 
+	debugLog("remote[%s]: executing command: %s", remote.Name, cmd)
+
 	// Execute the command
 	output, err := pool.Execute(remote.Name, cmd)
 	if err != nil {
+		debugLog("remote[%s]: execute error: %v", remote.Name, err)
 		return nil, fmt.Errorf("failed to execute remote command: %w", err)
 	}
 
+	debugLog("remote[%s]: raw output (%d bytes): %q", remote.Name, len(output), string(output))
+
 	// Parse the output - it may contain multiple JSON objects concatenated
 	sessions := parseRemoteSessionOutput(string(output), remote.Name)
+
+	debugLog("remote[%s]: parsed %d sessions", remote.Name, len(sessions))
 
 	return sessions, nil
 }

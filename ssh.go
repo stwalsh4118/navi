@@ -124,9 +124,11 @@ func (p *SSHPool) Connect(remoteName string) (*ssh.Client, error) {
 		// Verify the connection is still alive by sending a keepalive
 		_, _, err := client.SendRequest("keepalive@openssh.com", true, nil)
 		if err == nil {
+			debugLog("ssh[%s]: reusing existing connection", remoteName)
 			return client, nil
 		}
 		// Connection is dead, clean up
+		debugLog("ssh[%s]: existing connection dead, reconnecting: %v", remoteName, err)
 		client.Close()
 		delete(p.clients, remoteName)
 	}
@@ -137,9 +139,12 @@ func (p *SSHPool) Connect(remoteName string) (*ssh.Client, error) {
 		return nil, fmt.Errorf("unknown remote: %s", remoteName)
 	}
 
+	debugLog("ssh[%s]: connecting to %s@%s (key: %s)", remoteName, remote.User, remote.Host, remote.Key)
+
 	// Establish new connection
 	client, err := p.dialRemote(remote)
 	if err != nil {
+		debugLog("ssh[%s]: connection failed: %v", remoteName, err)
 		p.status[remoteName] = &RemoteStatus{
 			Status:    StatusError,
 			LastError: err,
@@ -147,6 +152,8 @@ func (p *SSHPool) Connect(remoteName string) (*ssh.Client, error) {
 		}
 		return nil, err
 	}
+
+	debugLog("ssh[%s]: connected successfully", remoteName)
 
 	// Store the connection
 	p.clients[remoteName] = client
@@ -168,6 +175,7 @@ func (p *SSHPool) Execute(remoteName, command string) ([]byte, error) {
 
 	session, err := client.NewSession()
 	if err != nil {
+		debugLog("ssh[%s]: session creation failed, reconnecting: %v", remoteName, err)
 		// Connection may be stale, try to reconnect once
 		p.mu.Lock()
 		if oldClient, ok := p.clients[remoteName]; ok {
@@ -192,6 +200,7 @@ func (p *SSHPool) Execute(remoteName, command string) ([]byte, error) {
 	// Execute the command
 	output, err := session.CombinedOutput(command)
 	if err != nil {
+		debugLog("ssh[%s]: command failed: %v (output: %q)", remoteName, err, string(output))
 		return output, err
 	}
 
