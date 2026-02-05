@@ -19,6 +19,11 @@
       {
         "hooks": [{ "type": "command", "command": "~/.claude-sessions/hooks/notify.sh offline" }]
       }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [{ "type": "command", "command": "~/.claude-sessions/hooks/tool-tracker.sh" }]
+      }
     ]
   }
 }

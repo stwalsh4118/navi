@@ -5,12 +5,13 @@ type DialogMode int
 
 // Dialog mode constants
 const (
-	DialogNone        DialogMode = iota // No dialog open
-	DialogNewSession                    // New session creation dialog
-	DialogKillConfirm                   // Kill session confirmation dialog
-	DialogRename                        // Rename session dialog
-	DialogGitDetail                     // Git detail view dialog
-	DialogGitDiff                       // Git diff view dialog
+	DialogNone          DialogMode = iota // No dialog open
+	DialogNewSession                      // New session creation dialog
+	DialogKillConfirm                     // Kill session confirmation dialog
+	DialogRename                          // Rename session dialog
+	DialogGitDetail                       // Git detail view dialog
+	DialogGitDiff                         // Git diff view dialog
+	DialogMetricsDetail                   // Metrics detail view dialog
 )
 
 // dialogTitle returns the title for a given dialog mode.
@@ -26,6 +27,8 @@ func dialogTitle(mode DialogMode) string {
 		return "Git Information"
 	case DialogGitDiff:
 		return "Git Changes"
+	case DialogMetricsDetail:
+		return "Session Metrics"
 	default:
 		return ""
 	}

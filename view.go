@@ -63,7 +63,17 @@ func (m Model) renderSession(s SessionInfo, selected bool, width int) string {
 		b.WriteString(renderGitInfo(s.Git, width-len(rowIndent)))
 	}
 
-	// Fourth line: message if present (indented, dimmed/italic)
+	// Metrics badges line if metrics present (indented, dimmed)
+	if s.Metrics != nil {
+		metricsLine := renderMetricsBadges(s.Metrics)
+		if metricsLine != "" {
+			b.WriteString("\n")
+			b.WriteString(rowIndent)
+			b.WriteString(dimStyle.Render(metricsLine))
+		}
+	}
+
+	// Message line if present (indented, dimmed/italic)
 	if s.Message != "" {
 		b.WriteString("\n")
 		msg := truncate(s.Message, width-len(rowIndent))
@@ -72,6 +82,35 @@ func (m Model) renderSession(s SessionInfo, selected bool, width int) string {
 	}
 
 	return b.String()
+}
+
+// renderMetricsBadges returns a compact metrics display string.
+// Format: "⏱ 1h 23m  🔧 45  📊 57k"
+func renderMetricsBadges(metrics *Metrics) string {
+	if metrics == nil {
+		return ""
+	}
+
+	var parts []string
+
+	// Time badge
+	if metrics.Time != nil && metrics.Time.TotalSeconds > 0 {
+		duration := formatDuration(metrics.Time.TotalSeconds)
+		parts = append(parts, fmt.Sprintf("⏱ %s", duration))
+	}
+
+	// Tool count badge
+	toolCount := formatToolCount(metrics.Tools)
+	if toolCount > 0 {
+		parts = append(parts, fmt.Sprintf("🔧 %d", toolCount))
+	}
+
+	// Token count badge
+	if metrics.Tokens != nil && metrics.Tokens.Total > 0 {
+		parts = append(parts, fmt.Sprintf("📊 %s", formatTokenCount(metrics.Tokens.Total)))
+	}
+
+	return strings.Join(parts, "  ")
 }
 
 // renderGitInfo renders git status info with appropriate coloring.
@@ -196,10 +235,30 @@ func (m Model) renderHeader() string {
 		remoteStatus = " " + strings.Join(indicators, " ")
 	}
 
+	// Build aggregate metrics string
+	aggregateStr := ""
+	aggregate := AggregateMetrics(m.sessions)
+	if aggregate != nil {
+		var parts []string
+		if aggregate.Tokens != nil && aggregate.Tokens.Total > 0 {
+			parts = append(parts, fmt.Sprintf("📊 %s", formatTokenCount(aggregate.Tokens.Total)))
+		}
+		if aggregate.Time != nil && aggregate.Time.TotalSeconds > 0 {
+			parts = append(parts, fmt.Sprintf("⏱ %s", formatDuration(aggregate.Time.TotalSeconds)))
+		}
+		toolCount := formatToolCount(aggregate.Tools)
+		if toolCount > 0 {
+			parts = append(parts, fmt.Sprintf("🔧 %d", toolCount))
+		}
+		if len(parts) > 0 {
+			aggregateStr = "  " + strings.Join(parts, " ")
+		}
+	}
+
 	// Calculate padding for count on right
 	// Account for box border padding (1 on each side)
 	contentWidth := m.width - 4
-	leftPart := headerTitle + remoteStatus
+	leftPart := headerTitle + remoteStatus + aggregateStr
 	padding := contentWidth - lipgloss.Width(leftPart) - lipgloss.Width(countStr)
 	if padding < 1 {
 		padding = 1
@@ -543,6 +602,154 @@ func (m Model) renderGitDiffView() string {
 	return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, dialog)
 }
 
+// metricsDetailWidth is the width of the metrics detail dialog
+const metricsDetailWidth = 60
+
+// renderMetricsDetailView renders the metrics detail view dialog.
+func (m Model) renderMetricsDetailView() string {
+	var b strings.Builder
+
+	// Title
+	b.WriteString(dialogTitleStyle.Render("Session Metrics"))
+	b.WriteString("\n\n")
+
+	if m.sessionToModify == nil {
+		b.WriteString(dimStyle.Render("No session selected"))
+		b.WriteString("\n\n")
+		b.WriteString(dimStyle.Render("Esc: close"))
+		content := b.String()
+		dialog := dialogBoxStyle.Width(metricsDetailWidth).Render(content)
+		return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, dialog)
+	}
+
+	session := m.sessionToModify
+
+	// Session name
+	b.WriteString(fmt.Sprintf("Session: %s\n", boldStyle.Render(session.TmuxSession)))
+	b.WriteString(fmt.Sprintf("Status: %s %s\n", statusIcon(session.Status), session.Status))
+	b.WriteString("\n")
+
+	// Check if metrics is available
+	if session.Metrics == nil {
+		b.WriteString(dimStyle.Render("No metrics data available"))
+		b.WriteString("\n\n")
+		b.WriteString(dimStyle.Render("Esc: close"))
+		content := b.String()
+		dialog := dialogBoxStyle.Width(metricsDetailWidth).Render(content)
+		return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, dialog)
+	}
+
+	metrics := session.Metrics
+
+	// Token metrics section
+	b.WriteString(boldStyle.Render("Token Usage"))
+	b.WriteString("\n")
+
+	if metrics.Tokens != nil && metrics.Tokens.Total > 0 {
+		b.WriteString(fmt.Sprintf("  Total: %s\n", formatTokenCount(metrics.Tokens.Total)))
+		b.WriteString(fmt.Sprintf("  Input: %s\n", formatTokenCount(metrics.Tokens.Input)))
+		b.WriteString(fmt.Sprintf("  Output: %s\n", formatTokenCount(metrics.Tokens.Output)))
+	} else {
+		b.WriteString(dimStyle.Render("  No token data"))
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n")
+
+	// Time metrics section
+	b.WriteString(boldStyle.Render("Time Tracking"))
+	b.WriteString("\n")
+
+	if metrics.Time != nil {
+		// Session start time
+		if metrics.Time.Started > 0 {
+			startTime := time.Unix(metrics.Time.Started, 0)
+			b.WriteString(fmt.Sprintf("  Started: %s\n", startTime.Format("15:04:05")))
+		}
+
+		// Total duration
+		b.WriteString(fmt.Sprintf("  Duration: %s\n", formatDuration(metrics.Time.TotalSeconds)))
+
+		// Working vs waiting breakdown
+		if metrics.Time.WorkingSeconds > 0 || metrics.Time.WaitingSeconds > 0 {
+			b.WriteString(fmt.Sprintf("  Working: %s", greenStyle.Render(formatDuration(metrics.Time.WorkingSeconds))))
+			if metrics.Time.TotalSeconds > 0 {
+				pct := float64(metrics.Time.WorkingSeconds) / float64(metrics.Time.TotalSeconds) * 100
+				b.WriteString(fmt.Sprintf(" (%.0f%%)", pct))
+			}
+			b.WriteString("\n")
+
+			b.WriteString(fmt.Sprintf("  Waiting: %s", yellowStyle.Render(formatDuration(metrics.Time.WaitingSeconds))))
+			if metrics.Time.TotalSeconds > 0 {
+				pct := float64(metrics.Time.WaitingSeconds) / float64(metrics.Time.TotalSeconds) * 100
+				b.WriteString(fmt.Sprintf(" (%.0f%%)", pct))
+			}
+			b.WriteString("\n")
+		}
+	} else {
+		b.WriteString(dimStyle.Render("  No time data"))
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n")
+
+	// Tool activity section
+	b.WriteString(boldStyle.Render("Tool Activity"))
+	b.WriteString("\n")
+
+	if metrics.Tools != nil && len(metrics.Tools.Counts) > 0 {
+		// Total tool calls
+		totalTools := formatToolCount(metrics.Tools)
+		b.WriteString(fmt.Sprintf("  Total calls: %d\n", totalTools))
+
+		// Tool counts (sorted by frequency)
+		type toolCount struct {
+			name  string
+			count int
+		}
+		var counts []toolCount
+		for name, count := range metrics.Tools.Counts {
+			counts = append(counts, toolCount{name, count})
+		}
+		// Sort by count descending
+		for i := 0; i < len(counts)-1; i++ {
+			for j := i + 1; j < len(counts); j++ {
+				if counts[j].count > counts[i].count {
+					counts[i], counts[j] = counts[j], counts[i]
+				}
+			}
+		}
+
+		// Show top tools (limit to 8)
+		maxTools := 8
+		if len(counts) < maxTools {
+			maxTools = len(counts)
+		}
+		for i := 0; i < maxTools; i++ {
+			b.WriteString(fmt.Sprintf("  %s: %d\n", counts[i].name, counts[i].count))
+		}
+		if len(counts) > maxTools {
+			b.WriteString(dimStyle.Render(fmt.Sprintf("  ... and %d more tools\n", len(counts)-maxTools)))
+		}
+
+		// Recent tools
+		if len(metrics.Tools.Recent) > 0 {
+			b.WriteString("\n")
+			b.WriteString(fmt.Sprintf("  Recent: %s\n", strings.Join(metrics.Tools.Recent, ", ")))
+		}
+	} else {
+		b.WriteString(dimStyle.Render("  No tool data"))
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n")
+	b.WriteString(dimStyle.Render("Esc: close"))
+
+	content := b.String()
+	dialog := dialogBoxStyle.Width(metricsDetailWidth).Render(content)
+	return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, dialog)
+}
+
 // renderDialog renders the dialog overlay when dialogMode is set.
 // Returns empty string if no dialog is open.
 func (m Model) renderDialog() string {
@@ -597,6 +804,9 @@ func (m Model) renderDialog() string {
 	case DialogGitDiff:
 		b.Reset() // Clear the builder for custom diff view
 		return m.renderGitDiffView()
+	case DialogMetricsDetail:
+		b.Reset() // Clear the builder for custom metrics view
+		return m.renderMetricsDetailView()
 	}
 
 	// Error message if present
