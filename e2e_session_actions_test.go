@@ -499,8 +499,9 @@ func TestE2E_AC6_ErrorMessages(t *testing.T) {
 
 // AC7: Footer Updates
 func TestE2E_AC7_FooterUpdates(t *testing.T) {
+	// Use wider terminal to fit all keybindings
 	m := Model{
-		width:  80,
+		width:  120,
 		height: 24,
 	}
 

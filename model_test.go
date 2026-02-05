@@ -11,8 +11,9 @@ import (
 
 func TestView(t *testing.T) {
 	t.Run("view with sessions", func(t *testing.T) {
+		// Use wider terminal to fit all keybindings in footer
 		m := Model{
-			width:  80,
+			width:  120,
 			height: 24,
 			sessions: []SessionInfo{
 				{
@@ -530,6 +531,381 @@ func TestCursorRestoration(t *testing.T) {
 		}
 		if updated.lastSelectedSession != "" {
 			t.Error("lastSelectedSession should be cleared")
+		}
+	})
+}
+
+func TestPreviewToggle(t *testing.T) {
+	t.Run("p key toggles preview visibility", func(t *testing.T) {
+		m := Model{
+			width:  80,
+			height: 24,
+			sessions: []SessionInfo{
+				{TmuxSession: "test-session"},
+			},
+			cursor:         0,
+			previewVisible: false,
+		}
+
+		// Press 'p' to enable preview
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if !updated.previewVisible {
+			t.Error("preview should be visible after pressing 'p'")
+		}
+		if !updated.previewUserEnabled {
+			t.Error("previewUserEnabled should be true after enabling preview")
+		}
+
+		// Press 'p' again to disable preview
+		newModel, _ = updated.Update(msg)
+		updated = newModel.(Model)
+
+		if updated.previewVisible {
+			t.Error("preview should be hidden after pressing 'p' again")
+		}
+		if updated.previewUserEnabled {
+			t.Error("previewUserEnabled should be false after disabling preview")
+		}
+	})
+
+	t.Run("tab key toggles preview outside dialog", func(t *testing.T) {
+		m := Model{
+			width:  80,
+			height: 24,
+			sessions: []SessionInfo{
+				{TmuxSession: "test-session"},
+			},
+			cursor:         0,
+			previewVisible: false,
+			dialogMode:     DialogNone,
+		}
+
+		// Press Tab to enable preview
+		msg := tea.KeyMsg{Type: tea.KeyTab}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if !updated.previewVisible {
+			t.Error("preview should be visible after pressing Tab")
+		}
+	})
+
+	t.Run("preview content cleared when hiding", func(t *testing.T) {
+		m := Model{
+			width:  80,
+			height: 24,
+			sessions: []SessionInfo{
+				{TmuxSession: "test-session"},
+			},
+			cursor:         0,
+			previewVisible: true,
+			previewContent: "some content",
+		}
+
+		// Press 'p' to disable preview
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if updated.previewContent != "" {
+			t.Error("preview content should be cleared when hiding")
+		}
+	})
+
+	t.Run("previewContentMsg updates content", func(t *testing.T) {
+		m := Model{
+			width:          80,
+			height:         24,
+			previewVisible: true,
+		}
+
+		msg := previewContentMsg{content: "captured output", err: nil}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if updated.previewContent != "captured output" {
+			t.Errorf("preview content should be 'captured output', got %q", updated.previewContent)
+		}
+	})
+}
+
+func TestPreviewPolling(t *testing.T) {
+	t.Run("previewTickMsg triggers capture when preview visible", func(t *testing.T) {
+		m := Model{
+			width:  80,
+			height: 24,
+			sessions: []SessionInfo{
+				{TmuxSession: "test-session"},
+			},
+			cursor:         0,
+			previewVisible: true,
+		}
+
+		msg := previewTickMsg(time.Now())
+		_, cmd := m.Update(msg)
+
+		// Should return a batch command (capture + next tick)
+		if cmd == nil {
+			t.Error("previewTickMsg should return commands when preview visible")
+		}
+	})
+
+	t.Run("previewTickMsg returns nil when preview hidden", func(t *testing.T) {
+		m := Model{
+			width:  80,
+			height: 24,
+			sessions: []SessionInfo{
+				{TmuxSession: "test-session"},
+			},
+			cursor:         0,
+			previewVisible: false,
+		}
+
+		msg := previewTickMsg(time.Now())
+		_, cmd := m.Update(msg)
+
+		if cmd != nil {
+			t.Error("previewTickMsg should return nil when preview hidden")
+		}
+	})
+
+	t.Run("previewTickMsg returns nil when no sessions", func(t *testing.T) {
+		m := Model{
+			width:          80,
+			height:         24,
+			sessions:       []SessionInfo{},
+			previewVisible: true,
+		}
+
+		msg := previewTickMsg(time.Now())
+		_, cmd := m.Update(msg)
+
+		if cmd != nil {
+			t.Error("previewTickMsg should return nil when no sessions")
+		}
+	})
+
+	t.Run("cursor movement triggers debounced capture when preview visible", func(t *testing.T) {
+		m := Model{
+			width:  80,
+			height: 24,
+			sessions: []SessionInfo{
+				{TmuxSession: "session-1"},
+				{TmuxSession: "session-2"},
+			},
+			cursor:         0,
+			previewVisible: true,
+		}
+
+		// Press down to move cursor
+		msg := tea.KeyMsg{Type: tea.KeyDown}
+		newModel, cmd := m.Update(msg)
+		updated := newModel.(Model)
+
+		if updated.cursor != 1 {
+			t.Error("cursor should move down")
+		}
+		if cmd == nil {
+			t.Error("cursor movement should trigger debounce command when preview visible")
+		}
+	})
+
+	t.Run("previewDebounceMsg triggers capture when preview visible", func(t *testing.T) {
+		m := Model{
+			width:  80,
+			height: 24,
+			sessions: []SessionInfo{
+				{TmuxSession: "test-session"},
+			},
+			cursor:         0,
+			previewVisible: true,
+		}
+
+		msg := previewDebounceMsg{}
+		_, cmd := m.Update(msg)
+
+		if cmd == nil {
+			t.Error("previewDebounceMsg should return capture command when preview visible")
+		}
+	})
+}
+
+func TestPreviewResize(t *testing.T) {
+	t.Run("[ key shrinks preview pane", func(t *testing.T) {
+		m := Model{
+			width:          120,
+			height:         24,
+			previewVisible: true,
+			previewWidth:   50,
+		}
+
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'['}}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		expectedWidth := 50 - previewResizeStep
+		if updated.previewWidth != expectedWidth {
+			t.Errorf("preview width should be %d after shrinking, got %d", expectedWidth, updated.previewWidth)
+		}
+	})
+
+	t.Run("] key expands preview pane", func(t *testing.T) {
+		m := Model{
+			width:          120,
+			height:         24,
+			previewVisible: true,
+			previewWidth:   50,
+		}
+
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		expectedWidth := 50 + previewResizeStep
+		if updated.previewWidth != expectedWidth {
+			t.Errorf("preview width should be %d after expanding, got %d", expectedWidth, updated.previewWidth)
+		}
+	})
+
+	t.Run("[ key respects minimum width", func(t *testing.T) {
+		m := Model{
+			width:          120,
+			height:         24,
+			previewVisible: true,
+			previewWidth:   previewMinWidth, // Already at minimum
+		}
+
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'['}}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if updated.previewWidth != previewMinWidth {
+			t.Errorf("preview width should stay at minimum %d, got %d", previewMinWidth, updated.previewWidth)
+		}
+	})
+
+	t.Run("] key respects maximum width", func(t *testing.T) {
+		m := Model{
+			width:          100,
+			height:         24,
+			previewVisible: true,
+			previewWidth:   100 - sessionListMinWidth - 1, // Max width
+		}
+
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		maxWidth := 100 - sessionListMinWidth - 1
+		if updated.previewWidth > maxWidth {
+			t.Errorf("preview width should not exceed max %d, got %d", maxWidth, updated.previewWidth)
+		}
+	})
+
+	t.Run("resize keys ignored when preview hidden", func(t *testing.T) {
+		m := Model{
+			width:          120,
+			height:         24,
+			previewVisible: false,
+			previewWidth:   50,
+		}
+
+		// Try to shrink
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'['}}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if updated.previewWidth != 50 {
+			t.Error("resize keys should be ignored when preview hidden")
+		}
+	})
+}
+
+func TestTerminalSizeAdaptation(t *testing.T) {
+	t.Run("preview auto-hides when terminal too narrow", func(t *testing.T) {
+		m := Model{
+			width:              120,
+			height:             24,
+			previewVisible:     true,
+			previewUserEnabled: true,
+		}
+
+		// Resize to narrow terminal
+		msg := tea.WindowSizeMsg{Width: previewMinTerminalWidth - 10, Height: 24}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if updated.previewVisible {
+			t.Error("preview should auto-hide when terminal too narrow")
+		}
+		// User preference should be preserved
+		if !updated.previewUserEnabled {
+			t.Error("previewUserEnabled should still be true")
+		}
+	})
+
+	t.Run("preview restores when terminal widens", func(t *testing.T) {
+		m := Model{
+			width:              previewMinTerminalWidth - 10,
+			height:             24,
+			previewVisible:     false,
+			previewUserEnabled: true, // User had it enabled
+			sessions: []SessionInfo{
+				{TmuxSession: "test-session"},
+			},
+			cursor: 0,
+		}
+
+		// Resize to wide enough terminal
+		msg := tea.WindowSizeMsg{Width: 120, Height: 24}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if !updated.previewVisible {
+			t.Error("preview should restore when terminal widens and user had it enabled")
+		}
+	})
+
+	t.Run("preview stays hidden if user disabled it", func(t *testing.T) {
+		m := Model{
+			width:              previewMinTerminalWidth - 10,
+			height:             24,
+			previewVisible:     false,
+			previewUserEnabled: false, // User did NOT have it enabled
+		}
+
+		// Resize to wide enough terminal
+		msg := tea.WindowSizeMsg{Width: 120, Height: 24}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if updated.previewVisible {
+			t.Error("preview should stay hidden if user didn't enable it")
+		}
+	})
+
+	t.Run("handles very small terminal without panic", func(t *testing.T) {
+		m := Model{
+			width:              120,
+			height:             24,
+			previewVisible:     true,
+			previewUserEnabled: true,
+		}
+
+		// Very small terminal
+		msg := tea.WindowSizeMsg{Width: 20, Height: 5}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		// Should not panic, and preview should be hidden
+		if updated.previewVisible {
+			t.Error("preview should be hidden on very small terminal")
+		}
+		if updated.width != 20 || updated.height != 5 {
+			t.Error("dimensions should be updated")
 		}
 	})
 }

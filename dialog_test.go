@@ -720,8 +720,9 @@ func TestRenameSessionResultError(t *testing.T) {
 }
 
 func TestFooterShowsRenameKey(t *testing.T) {
+	// Use wider terminal to fit all keybindings
 	m := Model{
-		width:  80,
+		width:  120,
 		height: 24,
 	}
 

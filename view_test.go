@@ -192,7 +192,8 @@ func TestRenderHeader(t *testing.T) {
 }
 
 func TestRenderFooter(t *testing.T) {
-	m := Model{width: 80, height: 24}
+	// Use wider terminal to fit all keybindings
+	m := Model{width: 120, height: 24}
 	result := m.renderFooter()
 
 	// Check that all keybindings are present
@@ -202,4 +203,93 @@ func TestRenderFooter(t *testing.T) {
 			t.Errorf("footer should contain keybinding %q", key)
 		}
 	}
+}
+
+func TestRenderPreview(t *testing.T) {
+	t.Run("returns empty string when preview not visible", func(t *testing.T) {
+		m := Model{
+			width:          80,
+			height:         24,
+			previewVisible: false,
+		}
+
+		result := m.renderPreview(40, 20)
+		if result != "" {
+			t.Error("renderPreview should return empty string when not visible")
+		}
+	})
+
+	t.Run("shows session name in header", func(t *testing.T) {
+		m := Model{
+			width:  80,
+			height: 24,
+			sessions: []SessionInfo{
+				{TmuxSession: "test-session"},
+			},
+			cursor:         0,
+			previewVisible: true,
+			previewContent: "some content",
+		}
+
+		result := m.renderPreview(40, 20)
+		if !strings.Contains(result, "test-session") {
+			t.Error("preview should show session name in header")
+		}
+	})
+
+	t.Run("shows empty message when no content", func(t *testing.T) {
+		m := Model{
+			width:  80,
+			height: 24,
+			sessions: []SessionInfo{
+				{TmuxSession: "test-session"},
+			},
+			cursor:         0,
+			previewVisible: true,
+			previewContent: "",
+		}
+
+		result := m.renderPreview(40, 20)
+		if !strings.Contains(result, "No preview available") {
+			t.Error("preview should show empty message when no content")
+		}
+	})
+
+	t.Run("displays preview content", func(t *testing.T) {
+		m := Model{
+			width:  80,
+			height: 24,
+			sessions: []SessionInfo{
+				{TmuxSession: "test-session"},
+			},
+			cursor:         0,
+			previewVisible: true,
+			previewContent: "line 1\nline 2\nline 3",
+		}
+
+		result := m.renderPreview(40, 20)
+		if !strings.Contains(result, "line 1") {
+			t.Error("preview should display content lines")
+		}
+	})
+}
+
+func TestViewWithPreview(t *testing.T) {
+	t.Run("view includes preview when visible", func(t *testing.T) {
+		m := Model{
+			width:  120,
+			height: 30,
+			sessions: []SessionInfo{
+				{TmuxSession: "test-session", Status: "working", CWD: "/tmp", Timestamp: time.Now().Unix()},
+			},
+			cursor:         0,
+			previewVisible: true,
+			previewContent: "preview content here",
+		}
+
+		result := m.View()
+		if !strings.Contains(result, "preview content here") {
+			t.Error("view should include preview content when visible")
+		}
+	})
 }

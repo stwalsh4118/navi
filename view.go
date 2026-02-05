@@ -97,7 +97,7 @@ func truncate(s string, maxLen int) string {
 // Header and footer constants
 const (
 	headerTitle = "Claude Sessions"
-	footerHelp  = "↑/↓ navigate  ⏎ attach  d dismiss  n new  x kill  R rename  r refresh  q quit"
+	footerHelp  = "↑/↓ navigate  ⏎ attach  p preview  [/] resize  d dismiss  n new  x kill  R rename  r refresh  q quit"
 )
 
 // renderHeader renders the header box with title and session count.
@@ -123,6 +123,76 @@ func (m Model) renderFooter() string {
 
 // Dialog width constant
 const dialogWidth = 56
+
+// renderPreview renders the preview pane showing captured tmux output.
+// Returns empty string if preview is not visible.
+func (m Model) renderPreview(width, height int) string {
+	if !m.previewVisible {
+		return ""
+	}
+
+	var b strings.Builder
+
+	// Get session name for header
+	sessionName := ""
+	if len(m.sessions) > 0 && m.cursor < len(m.sessions) {
+		sessionName = m.sessions[m.cursor].TmuxSession
+	}
+
+	// Build header with session name
+	if sessionName != "" {
+		b.WriteString(previewHeaderStyle.Render("─ " + sessionName + " "))
+	}
+	b.WriteString("\n")
+
+	// Content area
+	if m.previewContent == "" {
+		b.WriteString(previewEmptyStyle.Render("No preview available"))
+	} else {
+		// Split content into lines and limit to available height
+		lines := strings.Split(m.previewContent, "\n")
+		// Reserve space for header (1 line) and box borders (2 lines)
+		maxLines := height - 5
+		if maxLines < 1 {
+			maxLines = 1
+		}
+		if len(lines) > maxLines {
+			lines = lines[len(lines)-maxLines:]
+		}
+
+		// Truncate long lines to fit width
+		contentWidth := width - 4 // Account for box padding and borders
+		for i, line := range lines {
+			if lipgloss.Width(line) > contentWidth {
+				lines[i] = truncate(line, contentWidth)
+			}
+		}
+
+		b.WriteString(strings.Join(lines, "\n"))
+	}
+
+	// Apply box style
+	content := b.String()
+	return previewBoxStyle.Width(width - 2).Height(height - 2).Render(content)
+}
+
+// renderSessionList renders the session list portion of the view.
+func (m Model) renderSessionList(width int) string {
+	var b strings.Builder
+
+	if len(m.sessions) == 0 {
+		b.WriteString(dimStyle.Render(noSessionsMessage))
+		b.WriteString("\n")
+	} else {
+		for i, session := range m.sessions {
+			selected := i == m.cursor
+			b.WriteString(m.renderSession(session, selected, width))
+			b.WriteString("\n")
+		}
+	}
+
+	return b.String()
+}
 
 // renderDialog renders the dialog overlay when dialogMode is set.
 // Returns empty string if no dialog is open.

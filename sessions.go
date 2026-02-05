@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -45,6 +46,28 @@ func readSessions(dir string) ([]SessionInfo, error) {
 		sessions = append(sessions, session)
 	}
 	return sessions, nil
+}
+
+// capturePane captures the recent output from a tmux session pane.
+// Uses tmux capture-pane to retrieve the last N lines of output.
+// ANSI escape sequences are stripped for clean display.
+// Returns an empty string if the session doesn't exist or tmux is not running.
+func capturePane(sessionName string, lines int) (string, error) {
+	// Build the -S argument for number of lines (negative value captures from end)
+	lineArg := fmt.Sprintf("-%d", lines)
+
+	cmd := exec.Command("tmux", "capture-pane", "-t", sessionName, "-p", "-S", lineArg)
+	output, err := cmd.Output()
+	if err != nil {
+		// tmux returns error if session doesn't exist or server not running
+		return "", err
+	}
+
+	// Strip ANSI escape sequences for clean display
+	cleaned := stripANSI(string(output))
+
+	// Trim trailing whitespace but preserve internal structure
+	return strings.TrimRight(cleaned, "\n\t "), nil
 }
 
 // listTmuxSessions queries tmux for all active session names.
@@ -125,6 +148,20 @@ func sortSessions(sessions []SessionInfo) {
 func tickCmd() tea.Cmd {
 	return tea.Tick(pollInterval, func(t time.Time) tea.Msg {
 		return tickMsg(t)
+	})
+}
+
+// previewTickCmd returns a command that fires after previewPollInterval.
+func previewTickCmd() tea.Cmd {
+	return tea.Tick(previewPollInterval, func(t time.Time) tea.Msg {
+		return previewTickMsg(t)
+	})
+}
+
+// previewDebounceCmd returns a command that fires after previewDebounceDelay.
+func previewDebounceCmd() tea.Cmd {
+	return tea.Tick(previewDebounceDelay, func(t time.Time) tea.Msg {
+		return previewDebounceMsg{}
 	})
 }
 

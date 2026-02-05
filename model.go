@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // SessionInfo represents the status data for a single Claude Code session.
@@ -39,6 +40,15 @@ type Model struct {
 	focusedInput    int             // Which input is focused (0 = name, 1 = dir, 2 = skipPerms)
 	skipPermissions bool            // Whether to start claude with --dangerously-skip-permissions
 	sessionToModify *SessionInfo    // Session being killed or renamed
+
+	// Preview pane state
+	previewVisible     bool          // Whether preview pane is shown
+	previewUserEnabled bool          // User's intended state (for restore after terminal resize)
+	previewContent     string        // Cached captured output
+	previewLayout      PreviewLayout // Current layout mode (default: PreviewLayoutSide)
+	previewWidth       int           // Width of preview pane in columns
+	previewLastCapture time.Time     // Last capture timestamp for debouncing
+	previewLastCursor  int           // Last cursor position for detecting cursor changes
 }
 
 // Message types for Bubble Tea communication.
@@ -62,6 +72,18 @@ type renameSessionResultMsg struct {
 	newName string
 }
 
+// previewContentMsg is returned after capturing preview content.
+type previewContentMsg struct {
+	content string
+	err     error
+}
+
+// previewTickMsg is sent to trigger periodic preview refresh.
+type previewTickMsg time.Time
+
+// previewDebounceMsg is sent after cursor movement debounce delay.
+type previewDebounceMsg struct{}
+
 // Init implements tea.Model.
 // Starts the tick command and performs initial poll.
 func (m Model) Init() tea.Cmd {
@@ -81,20 +103,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "up", "k":
 			if len(m.sessions) > 0 {
+				oldCursor := m.cursor
 				if m.cursor > 0 {
 					m.cursor--
 				} else {
 					m.cursor = len(m.sessions) - 1 // wrap to bottom
+				}
+				// Trigger debounced preview capture if cursor changed and preview visible
+				if m.previewVisible && m.cursor != oldCursor {
+					m.previewLastCursor = m.cursor
+					return m, previewDebounceCmd()
 				}
 			}
 			return m, nil
 
 		case "down", "j":
 			if len(m.sessions) > 0 {
+				oldCursor := m.cursor
 				if m.cursor < len(m.sessions)-1 {
 					m.cursor++
 				} else {
 					m.cursor = 0 // wrap to top
+				}
+				// Trigger debounced preview capture if cursor changed and preview visible
+				if m.previewVisible && m.cursor != oldCursor {
+					m.previewLastCursor = m.cursor
+					return m, previewDebounceCmd()
 				}
 			}
 			return m, nil
@@ -154,6 +188,47 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
+		case "p", "tab":
+			// Toggle preview pane visibility
+			m.previewVisible = !m.previewVisible
+			m.previewUserEnabled = m.previewVisible
+			if m.previewVisible && len(m.sessions) > 0 && m.cursor < len(m.sessions) {
+				// Trigger immediate capture and start polling when showing
+				m.previewLastCursor = m.cursor
+				return m, tea.Batch(
+					capturePreviewCmd(m.sessions[m.cursor].TmuxSession),
+					previewTickCmd(),
+				)
+			}
+			// Clear content when hiding
+			m.previewContent = ""
+			return m, nil
+
+		case "[":
+			// Shrink preview pane
+			if m.previewVisible {
+				currentWidth := m.getPreviewWidth()
+				newWidth := currentWidth - previewResizeStep
+				if newWidth < previewMinWidth {
+					newWidth = previewMinWidth
+				}
+				m.previewWidth = newWidth
+			}
+			return m, nil
+
+		case "]":
+			// Expand preview pane
+			if m.previewVisible {
+				currentWidth := m.getPreviewWidth()
+				maxWidth := m.width - sessionListMinWidth - 1 // -1 for gap
+				newWidth := currentWidth + previewResizeStep
+				if newWidth > maxWidth {
+					newWidth = maxWidth
+				}
+				m.previewWidth = newWidth
+			}
+			return m, nil
+
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		}
@@ -188,6 +263,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+
+		// Handle preview visibility based on terminal width
+		if m.width < previewMinTerminalWidth {
+			// Auto-hide preview when terminal too narrow
+			m.previewVisible = false
+		} else if m.previewUserEnabled && !m.previewVisible {
+			// Restore preview if user had it enabled and space now available
+			m.previewVisible = true
+			// Trigger capture if we have sessions
+			if len(m.sessions) > 0 && m.cursor < len(m.sessions) {
+				return m, tea.Batch(
+					capturePreviewCmd(m.sessions[m.cursor].TmuxSession),
+					previewTickCmd(),
+				)
+			}
+		}
 
 	case attachDoneMsg:
 		// After returning from tmux, trigger immediate refresh
@@ -228,6 +319,39 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sessionToModify = nil
 		m.lastSelectedSession = msg.newName // Preserve cursor position on renamed session
 		return m, pollSessions
+
+	case previewContentMsg:
+		if msg.err == nil {
+			m.previewContent = msg.content
+			m.previewLastCapture = time.Now()
+		}
+		// Silently ignore errors - preview just won't update
+		return m, nil
+
+	case previewTickMsg:
+		// Periodic preview refresh
+		if !m.previewVisible || len(m.sessions) == 0 {
+			// Don't continue polling if preview hidden or no sessions
+			return m, nil
+		}
+		// Capture current session and schedule next tick
+		if m.cursor < len(m.sessions) {
+			return m, tea.Batch(
+				capturePreviewCmd(m.sessions[m.cursor].TmuxSession),
+				previewTickCmd(),
+			)
+		}
+		return m, previewTickCmd()
+
+	case previewDebounceMsg:
+		// Debounced capture after cursor movement
+		if !m.previewVisible || len(m.sessions) == 0 {
+			return m, nil
+		}
+		if m.cursor < len(m.sessions) {
+			return m, capturePreviewCmd(m.sessions[m.cursor].TmuxSession)
+		}
+		return m, nil
 	}
 	return m, nil
 }
@@ -247,16 +371,28 @@ func (m Model) View() string {
 	b.WriteString(m.renderHeader())
 	b.WriteString("\n\n")
 
-	// Session list
-	if len(m.sessions) == 0 {
-		b.WriteString(dimStyle.Render(noSessionsMessage))
-		b.WriteString("\n")
+	// Calculate available height for content area
+	// Header (3 lines) + Footer (3 lines) + spacing
+	contentHeight := m.height - 8
+	if contentHeight < 5 {
+		contentHeight = 5
+	}
+
+	// Calculate widths for side-by-side layout
+	previewWidth := m.getPreviewWidth()
+	sessionListWidth := m.width - previewWidth - 1 // -1 for gap
+
+	if m.previewVisible && m.width >= previewMinTerminalWidth {
+		// Side-by-side layout: sessions on left, preview on right
+		sessionList := m.renderSessionList(sessionListWidth)
+		preview := m.renderPreview(previewWidth, contentHeight)
+
+		// Join horizontally with a gap
+		combined := lipgloss.JoinHorizontal(lipgloss.Top, sessionList, " ", preview)
+		b.WriteString(combined)
 	} else {
-		for i, session := range m.sessions {
-			selected := i == m.cursor
-			b.WriteString(m.renderSession(session, selected, m.width))
-			b.WriteString("\n")
-		}
+		// Standard layout: just session list
+		b.WriteString(m.renderSessionList(m.width))
 	}
 
 	b.WriteString("\n")
@@ -273,6 +409,15 @@ func (m Model) View() string {
 	return b.String()
 }
 
+// getPreviewWidth returns the width to use for the preview pane.
+func (m Model) getPreviewWidth() int {
+	if m.previewWidth > 0 {
+		return m.previewWidth
+	}
+	// Default to percentage of terminal width
+	return m.width * previewDefaultWidthPercent / 100
+}
+
 // attachSession returns a command that attaches to a tmux session.
 // Uses tea.ExecProcess to hand off terminal control to tmux.
 func attachSession(name string) tea.Cmd {
@@ -280,6 +425,14 @@ func attachSession(name string) tea.Cmd {
 	return tea.ExecProcess(c, func(err error) tea.Msg {
 		return attachDoneMsg{}
 	})
+}
+
+// capturePreviewCmd returns a command that captures preview content from a tmux session.
+func capturePreviewCmd(sessionName string) tea.Cmd {
+	return func() tea.Msg {
+		content, err := capturePane(sessionName, previewDefaultLines)
+		return previewContentMsg{content: content, err: err}
+	}
 }
 
 // updateDialog handles key messages when a dialog is open.

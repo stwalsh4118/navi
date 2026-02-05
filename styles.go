@@ -50,6 +50,22 @@ var (
 				Foreground(lipgloss.Color("196"))
 )
 
+// Preview pane styles
+var (
+	previewBoxStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("99")).
+			Padding(0, 1)
+
+	previewHeaderStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("99"))
+
+	previewEmptyStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("241")).
+				Italic(true)
+)
+
 // Status icon constants
 const (
 	iconWaiting    = "⏳"
