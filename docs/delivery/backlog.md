@@ -31,6 +31,7 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 23 | User | As a user, I want a CLI mode with non-interactive commands so that I can script navi into my automation workflows | Proposed | [View Details](./23/prd.md) |
 | 24 | User | As a user, I want customizable themes and keybindings so that I can personalize the TUI to my preferences | Proposed | [View Details](./24/prd.md) |
 | 25 | User | As a user, I want mouse support so that I can click to select sessions and scroll the list | Proposed | [View Details](./25/prd.md) |
+| 26 | User | As a user, I want to see token usage per session by reading Claude's transcript files so that I can track API costs | Agreed | [View Details](./26/prd.md) |
 
 ## History Log
 
@@ -66,3 +67,5 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 2026-02-05 12:00:00 | 11 | Status Change | Proposed → Agreed - Approved for task breakdown | User |
 | 2026-02-05 13:58:48 | 19 | Status Change | Proposed → Agreed - Approved for task breakdown | User |
 | 2026-02-05 16:24:09 | 12 | Status Change | Proposed → Agreed - Approved for task breakdown | User |
+| 2026-02-05 17:35:00 | 26 | Created | Token Metrics from Session Transcripts - parse ~/.claude transcript files | AI_Agent |
+| 2026-02-05 17:35:00 | 26 | Status Change | Proposed → Agreed - Approved for implementation | User |
