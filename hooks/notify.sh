@@ -1,6 +1,6 @@
 #!/bin/bash
 # notify.sh - Hook script for navi to receive Claude Code status updates.
-# Implementation will be added in PBI-2.
+# Called by Claude Code hooks to write status JSON files to the shared status directory.
 
 STATUS="$1"
 MESSAGE="${CLAUDE_NOTIFICATION:-}"

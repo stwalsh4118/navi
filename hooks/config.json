@@ -1,0 +1,25 @@
+{
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [{ "type": "command", "command": "~/.claude-sessions/hooks/notify.sh waiting" }]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [{ "type": "command", "command": "~/.claude-sessions/hooks/notify.sh done" }]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [{ "type": "command", "command": "~/.claude-sessions/hooks/notify.sh permission" }]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [{ "type": "command", "command": "~/.claude-sessions/hooks/notify.sh working" }]
+      }
+    ]
+  }
+}
