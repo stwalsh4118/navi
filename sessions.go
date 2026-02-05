@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -45,6 +46,28 @@ func readSessions(dir string) ([]SessionInfo, error) {
 		sessions = append(sessions, session)
 	}
 	return sessions, nil
+}
+
+// capturePane captures the recent output from a tmux session pane.
+// Uses tmux capture-pane to retrieve the last N lines of output.
+// ANSI escape sequences are stripped for clean display.
+// Returns an empty string if the session doesn't exist or tmux is not running.
+func capturePane(sessionName string, lines int) (string, error) {
+	// Build the -S argument for number of lines (negative value captures from end)
+	lineArg := fmt.Sprintf("-%d", lines)
+
+	cmd := exec.Command("tmux", "capture-pane", "-t", sessionName, "-p", "-S", lineArg)
+	output, err := cmd.Output()
+	if err != nil {
+		// tmux returns error if session doesn't exist or server not running
+		return "", err
+	}
+
+	// Strip ANSI escape sequences for clean display
+	cleaned := stripANSI(string(output))
+
+	// Trim trailing whitespace but preserve internal structure
+	return strings.TrimRight(cleaned, "\n\t "), nil
 }
 
 // listTmuxSessions queries tmux for all active session names.
@@ -128,6 +151,20 @@ func tickCmd() tea.Cmd {
 	})
 }
 
+// previewTickCmd returns a command that fires after previewPollInterval.
+func previewTickCmd() tea.Cmd {
+	return tea.Tick(previewPollInterval, func(t time.Time) tea.Msg {
+		return previewTickMsg(t)
+	})
+}
+
+// previewDebounceCmd returns a command that fires after previewDebounceDelay.
+func previewDebounceCmd() tea.Cmd {
+	return tea.Tick(previewDebounceDelay, func(t time.Time) tea.Msg {
+		return previewDebounceMsg{}
+	})
+}
+
 // pollSessions orchestrates reading, cleaning stale, and sorting sessions.
 // Returns a sessionsMsg with the current session list.
 func pollSessions() tea.Msg {
@@ -177,4 +214,104 @@ func dismissSession(session SessionInfo) error {
 	}
 
 	return os.WriteFile(path, data, 0644)
+}
+
+// createSessionCmd returns a command that creates a new tmux session.
+// The session starts a shell and runs 'claude' via send-keys, so when claude
+// exits the session remains open with a shell prompt.
+// It also creates an initial status file so the session appears immediately in the UI.
+// If skipPermissions is true, claude is started with --dangerously-skip-permissions.
+func createSessionCmd(name, dir string, skipPermissions bool) tea.Cmd {
+	return func() tea.Msg {
+		// Create tmux session with a shell (no command)
+		cmd := exec.Command("tmux", "new-session", "-d", "-s", name, "-c", dir)
+		err := cmd.Run()
+		if err != nil {
+			return createSessionResultMsg{err: err}
+		}
+
+		// Send keys to start claude - session stays open when claude exits
+		claudeCmd := "claude"
+		if skipPermissions {
+			claudeCmd = "claude --dangerously-skip-permissions"
+		}
+		sendKeys := exec.Command("tmux", "send-keys", "-t", name, claudeCmd, "Enter")
+		sendKeys.Run() // Ignore error - session is created, claude just won't auto-start
+
+		// Create initial status file so session appears immediately in UI
+		statusDirPath := expandPath(statusDir)
+		// Ensure directory exists
+		os.MkdirAll(statusDirPath, 0755)
+
+		session := SessionInfo{
+			TmuxSession: name,
+			Status:      statusWorking,
+			Message:     "",
+			CWD:         dir,
+			Timestamp:   time.Now().Unix(),
+		}
+
+		data, err := json.MarshalIndent(session, "", "  ")
+		if err != nil {
+			// Session was created, but we couldn't marshal the status
+			// Return success anyway - the hook will create it later
+			return createSessionResultMsg{err: nil}
+		}
+
+		statusPath := filepath.Join(statusDirPath, name+".json")
+		os.WriteFile(statusPath, data, 0644) // Ignore error - hook will create it later if needed
+
+		return createSessionResultMsg{err: nil}
+	}
+}
+
+// killSessionCmd returns a command that kills a tmux session and cleans up its status file.
+func killSessionCmd(name string) tea.Cmd {
+	return func() tea.Msg {
+		// Kill tmux session: tmux kill-session -t <name>
+		cmd := exec.Command("tmux", "kill-session", "-t", name)
+		err := cmd.Run()
+		if err != nil {
+			return killSessionResultMsg{err: err}
+		}
+
+		// Delete status file
+		dir := expandPath(statusDir)
+		statusPath := filepath.Join(dir, name+".json")
+		os.Remove(statusPath) // Ignore error - file may not exist
+
+		return killSessionResultMsg{err: nil}
+	}
+}
+
+// renameSessionCmd returns a command that renames a tmux session and its status file.
+func renameSessionCmd(oldName, newName string) tea.Cmd {
+	return func() tea.Msg {
+		// Rename tmux session: tmux rename-session -t <old> <new>
+		cmd := exec.Command("tmux", "rename-session", "-t", oldName, newName)
+		err := cmd.Run()
+		if err != nil {
+			return renameSessionResultMsg{err: err, newName: newName}
+		}
+
+		// Rename status file
+		dir := expandPath(statusDir)
+		oldPath := filepath.Join(dir, oldName+".json")
+		newPath := filepath.Join(dir, newName+".json")
+
+		// Read old file, update session name, write to new file
+		data, err := os.ReadFile(oldPath)
+		if err == nil {
+			var session SessionInfo
+			if json.Unmarshal(data, &session) == nil {
+				session.TmuxSession = newName
+				if newData, err := json.MarshalIndent(session, "", "  "); err == nil {
+					os.WriteFile(newPath, newData, 0644)
+				}
+			}
+			os.Remove(oldPath) // Remove old file
+		}
+
+		return renameSessionResultMsg{err: nil, newName: newName}
+	}
 }

@@ -104,4 +104,4 @@ tmux capture-pane -t <session> -p -S -50
 
 ## Related Tasks
 
-See [Tasks](./tasks.md)
+[View Tasks](./tasks.md)

@@ -17,11 +17,11 @@ HOOKS_DIR="$SESSIONS_DIR/hooks"
 mkdir -p "$SESSIONS_DIR"
 echo "✓ Created $SESSIONS_DIR"
 
-mkdir -p "$HOOKS_DIR"
-echo "✓ Created $HOOKS_DIR"
-
 # Get script directory (where install.sh is located)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+mkdir -p "$HOOKS_DIR"
+echo "✓ Created $HOOKS_DIR"
 
 # Copy hook script
 if [ -f "$SCRIPT_DIR/hooks/notify.sh" ]; then
@@ -104,10 +104,11 @@ merge_hooks() {
     echo "Options:"
     echo "  1) Override - Replace ALL hooks with navi hooks only (backup saved)"
     echo "  2) Merge    - Add navi hooks alongside existing hooks"
-    echo "  3) Manual   - Save navi config for manual merging"
-    echo "  4) Abort    - Exit without changes"
+    echo "  3) Skip     - Continue without modifying hooks"
+    echo "  4) Manual   - Save navi config for manual merging"
+    echo "  5) Abort    - Exit without changes"
     echo ""
-    read -rp "Choose [1/2/3/4]: " choice
+    read -rp "Choose [1/2/3/4/5]: " choice
 
     case $choice in
         1)
@@ -127,9 +128,12 @@ merge_hooks() {
             echo "✓ Merged navi hooks with existing configuration"
             ;;
         3)
-            save_for_manual
+            echo "⊘ Skipping hooks configuration"
             ;;
         4)
+            save_for_manual
+            ;;
+        5)
             echo "Aborted. No changes made to settings.json."
             return 0
             ;;

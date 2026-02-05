@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/reflow/wordwrap"
 )
 
 // Selection marker constants
@@ -94,11 +95,8 @@ func truncate(s string, maxLen int) string {
 	return s[:maxLen-3] + "..."
 }
 
-// Header and footer constants
-const (
-	headerTitle = "Claude Sessions"
-	footerHelp  = "↑/↓ navigate  ⏎ attach  d dismiss  q quit  r refresh"
-)
+// Header constant
+const headerTitle = "Claude Sessions"
 
 // renderHeader renders the header box with title and session count.
 func (m Model) renderHeader() string {
@@ -118,5 +116,180 @@ func (m Model) renderHeader() string {
 
 // renderFooter renders the footer box with keybinding help.
 func (m Model) renderFooter() string {
+	var parts []string
+
+	// Always show these
+	parts = append(parts, "↑/↓ nav", "⏎ attach", "p preview")
+
+	// Show preview-specific keys only when preview is visible
+	if m.previewVisible {
+		parts = append(parts, "L layout", "W wrap", "[/] resize")
+	}
+
+	// Always show these
+	parts = append(parts, "d dismiss", "n new", "x kill", "R rename", "r refresh", "q quit")
+
+	footerHelp := strings.Join(parts, "  ")
 	return boxStyle.Width(m.width - 2).Render(footerHelp)
+}
+
+// Dialog width constant
+const dialogWidth = 56
+
+// renderPreview renders the preview pane showing captured tmux output.
+// Returns empty string if preview is not visible.
+func (m Model) renderPreview(width, height int) string {
+	if !m.previewVisible {
+		return ""
+	}
+
+	var b strings.Builder
+
+	// Get session name for header
+	sessionName := ""
+	if len(m.sessions) > 0 && m.cursor < len(m.sessions) {
+		sessionName = m.sessions[m.cursor].TmuxSession
+	}
+
+	// Build header with session name
+	if sessionName != "" {
+		b.WriteString(previewHeaderStyle.Render("─ " + sessionName + " "))
+	}
+	b.WriteString("\n")
+
+	// Content area
+	contentWidth := width - 4 // Account for box padding and borders
+	if contentWidth < 10 {
+		contentWidth = 10
+	}
+
+	if m.previewContent == "" {
+		b.WriteString(previewEmptyStyle.Render("No preview available"))
+	} else {
+		var content string
+		if m.previewWrap {
+			// Wrap content to fit width
+			content = wordwrap.String(m.previewContent, contentWidth)
+		} else {
+			// Truncate long lines
+			lines := strings.Split(m.previewContent, "\n")
+			for i, line := range lines {
+				if lipgloss.Width(line) > contentWidth {
+					lines[i] = truncate(line, contentWidth)
+				}
+			}
+			content = strings.Join(lines, "\n")
+		}
+
+		// Calculate max content lines: total height - borders(2) - header(1)
+		maxLines := height - 3
+		if maxLines < 1 {
+			maxLines = 1
+		}
+
+		// Split into lines and limit to available height
+		lines := strings.Split(content, "\n")
+		if len(lines) > maxLines {
+			lines = lines[len(lines)-maxLines:]
+		}
+
+		b.WriteString(strings.Join(lines, "\n"))
+	}
+
+	// Render the box
+	boxContent := b.String()
+	rendered := previewBoxStyle.Width(width - 2).Render(boxContent)
+
+	// Ensure the final output is exactly `height` lines by truncating or padding
+	renderedLines := strings.Split(rendered, "\n")
+	if len(renderedLines) > height {
+		renderedLines = renderedLines[:height]
+	}
+	for len(renderedLines) < height {
+		renderedLines = append(renderedLines, "")
+	}
+
+	return strings.Join(renderedLines, "\n")
+}
+
+// renderSessionList renders the session list portion of the view.
+func (m Model) renderSessionList(width int) string {
+	var b strings.Builder
+
+	if len(m.sessions) == 0 {
+		b.WriteString(dimStyle.Render(noSessionsMessage))
+		b.WriteString("\n")
+	} else {
+		for i, session := range m.sessions {
+			selected := i == m.cursor
+			b.WriteString(m.renderSession(session, selected, width))
+			b.WriteString("\n")
+		}
+	}
+
+	return b.String()
+}
+
+// renderDialog renders the dialog overlay when dialogMode is set.
+// Returns empty string if no dialog is open.
+func (m Model) renderDialog() string {
+	if m.dialogMode == DialogNone {
+		return ""
+	}
+
+	var b strings.Builder
+
+	// Title
+	title := dialogTitle(m.dialogMode)
+	b.WriteString(dialogTitleStyle.Render(title))
+	b.WriteString("\n\n")
+
+	// Dialog-specific content
+	switch m.dialogMode {
+	case DialogNewSession:
+		b.WriteString("Name:      ")
+		b.WriteString(m.nameInput.View())
+		b.WriteString("\n")
+		b.WriteString("Directory: ")
+		b.WriteString(m.dirInput.View())
+		b.WriteString("\n")
+		// Checkbox for skip permissions
+		checkbox := "[ ]"
+		if m.skipPermissions {
+			checkbox = "[x]"
+		}
+		checkboxLine := checkbox + " Skip permissions"
+		if m.focusedInput == focusSkipPerms {
+			checkboxLine = highlightStyle.Render(checkboxLine)
+		}
+		b.WriteString(checkboxLine)
+		b.WriteString("\n\n")
+		b.WriteString(dimStyle.Render("Tab: switch  Space: toggle  Enter: create  Esc: cancel"))
+	case DialogKillConfirm:
+		if m.sessionToModify != nil {
+			b.WriteString(fmt.Sprintf("Kill session '%s'?\n\n", m.sessionToModify.TmuxSession))
+		}
+		b.WriteString(dimStyle.Render("y: yes  n: no  Esc: cancel"))
+	case DialogRename:
+		if m.sessionToModify != nil {
+			b.WriteString(fmt.Sprintf("Current: %s\n\n", dimStyle.Render(m.sessionToModify.TmuxSession)))
+		}
+		b.WriteString("New name: ")
+		b.WriteString(m.nameInput.View())
+		b.WriteString("\n\n")
+		b.WriteString(dimStyle.Render("Enter: rename  Esc: cancel"))
+	}
+
+	// Error message if present
+	if m.dialogError != "" {
+		b.WriteString("\n\n")
+		b.WriteString(dialogErrorStyle.Render(m.dialogError))
+	}
+
+	// Render the dialog box
+	content := b.String()
+	dialog := dialogBoxStyle.Width(dialogWidth).Render(content)
+
+	// Center the dialog horizontally using lipgloss.Place for proper multi-line handling
+	return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, dialog)
 }
