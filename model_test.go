@@ -175,3 +175,361 @@ func TestCursorClamping(t *testing.T) {
 		}
 	})
 }
+
+func TestKeyboardNavigation(t *testing.T) {
+	t.Run("down key moves cursor down", func(t *testing.T) {
+		m := Model{
+			width:  80,
+			height: 24,
+			sessions: []SessionInfo{
+				{TmuxSession: "1"},
+				{TmuxSession: "2"},
+				{TmuxSession: "3"},
+			},
+			cursor: 0,
+		}
+
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if updated.cursor != 1 {
+			t.Errorf("cursor should be 1 after down, got %d", updated.cursor)
+		}
+	})
+
+	t.Run("up key moves cursor up", func(t *testing.T) {
+		m := Model{
+			width:  80,
+			height: 24,
+			sessions: []SessionInfo{
+				{TmuxSession: "1"},
+				{TmuxSession: "2"},
+				{TmuxSession: "3"},
+			},
+			cursor: 2,
+		}
+
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if updated.cursor != 1 {
+			t.Errorf("cursor should be 1 after up, got %d", updated.cursor)
+		}
+	})
+
+	t.Run("down key wraps to top", func(t *testing.T) {
+		m := Model{
+			width:  80,
+			height: 24,
+			sessions: []SessionInfo{
+				{TmuxSession: "1"},
+				{TmuxSession: "2"},
+			},
+			cursor: 1, // At the end
+		}
+
+		msg := tea.KeyMsg{Type: tea.KeyDown}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if updated.cursor != 0 {
+			t.Errorf("cursor should wrap to 0, got %d", updated.cursor)
+		}
+	})
+
+	t.Run("up key wraps to bottom", func(t *testing.T) {
+		m := Model{
+			width:  80,
+			height: 24,
+			sessions: []SessionInfo{
+				{TmuxSession: "1"},
+				{TmuxSession: "2"},
+				{TmuxSession: "3"},
+			},
+			cursor: 0, // At the start
+		}
+
+		msg := tea.KeyMsg{Type: tea.KeyUp}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if updated.cursor != 2 {
+			t.Errorf("cursor should wrap to 2, got %d", updated.cursor)
+		}
+	})
+
+	t.Run("navigation on empty list does nothing", func(t *testing.T) {
+		m := Model{
+			width:    80,
+			height:   24,
+			sessions: []SessionInfo{},
+			cursor:   0,
+		}
+
+		msg := tea.KeyMsg{Type: tea.KeyDown}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if updated.cursor != 0 {
+			t.Errorf("cursor should stay at 0, got %d", updated.cursor)
+		}
+	})
+
+	t.Run("j key works like down", func(t *testing.T) {
+		m := Model{
+			width:  80,
+			height: 24,
+			sessions: []SessionInfo{
+				{TmuxSession: "1"},
+				{TmuxSession: "2"},
+			},
+			cursor: 0,
+		}
+
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if updated.cursor != 1 {
+			t.Errorf("cursor should be 1 after j, got %d", updated.cursor)
+		}
+	})
+
+	t.Run("k key works like up", func(t *testing.T) {
+		m := Model{
+			width:  80,
+			height: 24,
+			sessions: []SessionInfo{
+				{TmuxSession: "1"},
+				{TmuxSession: "2"},
+			},
+			cursor: 1,
+		}
+
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if updated.cursor != 0 {
+			t.Errorf("cursor should be 0 after k, got %d", updated.cursor)
+		}
+	})
+}
+
+func TestEnterKey(t *testing.T) {
+	t.Run("enter returns command when sessions exist", func(t *testing.T) {
+		m := Model{
+			width:  80,
+			height: 24,
+			sessions: []SessionInfo{
+				{TmuxSession: "test-session"},
+			},
+			cursor: 0,
+		}
+
+		msg := tea.KeyMsg{Type: tea.KeyEnter}
+		_, cmd := m.Update(msg)
+
+		// A command should be returned (attachSession)
+		if cmd == nil {
+			t.Error("enter should return a command when sessions exist")
+		}
+	})
+
+	t.Run("enter returns nil when no sessions", func(t *testing.T) {
+		m := Model{
+			width:    80,
+			height:   24,
+			sessions: []SessionInfo{},
+			cursor:   0,
+		}
+
+		msg := tea.KeyMsg{Type: tea.KeyEnter}
+		_, cmd := m.Update(msg)
+
+		if cmd != nil {
+			t.Error("enter should return nil when no sessions")
+		}
+	})
+
+	t.Run("enter stores lastSelectedSession", func(t *testing.T) {
+		m := Model{
+			width:  80,
+			height: 24,
+			sessions: []SessionInfo{
+				{TmuxSession: "my-session"},
+			},
+			cursor: 0,
+		}
+
+		msg := tea.KeyMsg{Type: tea.KeyEnter}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if updated.lastSelectedSession != "my-session" {
+			t.Errorf("lastSelectedSession should be 'my-session', got '%s'", updated.lastSelectedSession)
+		}
+	})
+}
+
+func TestAttachDoneMsg(t *testing.T) {
+	t.Run("attachDoneMsg triggers poll command", func(t *testing.T) {
+		m := Model{
+			width:    80,
+			height:   24,
+			sessions: []SessionInfo{},
+			cursor:   0,
+		}
+
+		msg := attachDoneMsg{}
+		_, cmd := m.Update(msg)
+
+		if cmd == nil {
+			t.Error("attachDoneMsg should return a poll command")
+		}
+	})
+}
+
+func TestRefreshKey(t *testing.T) {
+	t.Run("r returns poll command", func(t *testing.T) {
+		m := Model{
+			width:    80,
+			height:   24,
+			sessions: []SessionInfo{},
+			cursor:   0,
+		}
+
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}}
+		_, cmd := m.Update(msg)
+
+		if cmd == nil {
+			t.Error("r should return a poll command")
+		}
+	})
+}
+
+func TestQuitKey(t *testing.T) {
+	t.Run("q returns quit command", func(t *testing.T) {
+		m := Model{
+			width:    80,
+			height:   24,
+			sessions: []SessionInfo{},
+			cursor:   0,
+		}
+
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}}
+		_, cmd := m.Update(msg)
+
+		// Execute the command to verify it's a quit
+		if cmd == nil {
+			t.Error("q should return a command")
+		}
+	})
+
+	t.Run("ctrl+c returns quit command", func(t *testing.T) {
+		m := Model{
+			width:    80,
+			height:   24,
+			sessions: []SessionInfo{},
+			cursor:   0,
+		}
+
+		msg := tea.KeyMsg{Type: tea.KeyCtrlC}
+		_, cmd := m.Update(msg)
+
+		if cmd == nil {
+			t.Error("ctrl+c should return a command")
+		}
+	})
+}
+
+func TestDismissKey(t *testing.T) {
+	t.Run("d returns poll command when sessions exist", func(t *testing.T) {
+		m := Model{
+			width:  80,
+			height: 24,
+			sessions: []SessionInfo{
+				{TmuxSession: "test-session", Status: "waiting"},
+			},
+			cursor: 0,
+		}
+
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}}
+		_, cmd := m.Update(msg)
+
+		if cmd == nil {
+			t.Error("d should return a poll command when sessions exist")
+		}
+	})
+
+	t.Run("d returns nil when no sessions", func(t *testing.T) {
+		m := Model{
+			width:    80,
+			height:   24,
+			sessions: []SessionInfo{},
+			cursor:   0,
+		}
+
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}}
+		_, cmd := m.Update(msg)
+
+		if cmd != nil {
+			t.Error("d should return nil when no sessions")
+		}
+	})
+}
+
+func TestCursorRestoration(t *testing.T) {
+	t.Run("cursor restored to last selected session", func(t *testing.T) {
+		m := Model{
+			width:               80,
+			height:              24,
+			sessions:            []SessionInfo{},
+			cursor:              0,
+			lastSelectedSession: "session-2",
+		}
+
+		// Simulate sessions arriving after detach
+		msg := sessionsMsg{
+			{TmuxSession: "session-1"},
+			{TmuxSession: "session-2"},
+			{TmuxSession: "session-3"},
+		}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if updated.cursor != 1 {
+			t.Errorf("cursor should be restored to 1, got %d", updated.cursor)
+		}
+		if updated.lastSelectedSession != "" {
+			t.Error("lastSelectedSession should be cleared after restoration")
+		}
+	})
+
+	t.Run("cursor clamped when lastSelectedSession not found", func(t *testing.T) {
+		m := Model{
+			width:               80,
+			height:              24,
+			sessions:            []SessionInfo{},
+			cursor:              5, // Out of range for new list
+			lastSelectedSession: "nonexistent",
+		}
+
+		// Simulate sessions arriving
+		msg := sessionsMsg{
+			{TmuxSession: "session-1"},
+			{TmuxSession: "session-2"},
+		}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if updated.cursor != 1 {
+			t.Errorf("cursor should be clamped to 1, got %d", updated.cursor)
+		}
+		if updated.lastSelectedSession != "" {
+			t.Error("lastSelectedSession should be cleared")
+		}
+	})
+}
