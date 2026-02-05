@@ -909,3 +909,309 @@ func TestTerminalSizeAdaptation(t *testing.T) {
 		}
 	})
 }
+
+func TestSessionInfoRemoteField(t *testing.T) {
+	t.Run("local session has empty Remote field", func(t *testing.T) {
+		session := SessionInfo{
+			TmuxSession: "local-session",
+			Status:      "working",
+			CWD:         "/tmp/test",
+			Timestamp:   time.Now().Unix(),
+		}
+
+		if session.Remote != "" {
+			t.Errorf("local session should have empty Remote field, got %q", session.Remote)
+		}
+	})
+
+	t.Run("remote session has populated Remote field", func(t *testing.T) {
+		session := SessionInfo{
+			TmuxSession: "remote-session",
+			Status:      "working",
+			CWD:         "/home/user/project",
+			Timestamp:   time.Now().Unix(),
+			Remote:      "dev-server",
+		}
+
+		if session.Remote != "dev-server" {
+			t.Errorf("remote session should have Remote field 'dev-server', got %q", session.Remote)
+		}
+	})
+}
+
+func TestModelRemotesFields(t *testing.T) {
+	t.Run("model supports remotes configuration", func(t *testing.T) {
+		remotes := []RemoteConfig{
+			{Name: "dev", Host: "dev.example.com", User: "user", Key: "~/.ssh/id_rsa"},
+		}
+		sshPool := NewSSHPool(remotes)
+
+		m := Model{
+			sessions: []SessionInfo{},
+			remotes:  remotes,
+			sshPool:  sshPool,
+		}
+
+		if len(m.remotes) != 1 {
+			t.Errorf("model should have 1 remote, got %d", len(m.remotes))
+		}
+		if m.sshPool == nil {
+			t.Error("model should have sshPool initialized")
+		}
+	})
+
+	t.Run("model works without remotes", func(t *testing.T) {
+		m := Model{
+			sessions: []SessionInfo{},
+			remotes:  nil,
+			sshPool:  nil,
+		}
+
+		// Should not panic
+		if m.remotes != nil {
+			t.Error("model should have nil remotes")
+		}
+		if m.sshPool != nil {
+			t.Error("model should have nil sshPool")
+		}
+	})
+}
+
+func TestFilterMode(t *testing.T) {
+	t.Run("default filter shows all sessions", func(t *testing.T) {
+		m := Model{
+			sessions: []SessionInfo{
+				{TmuxSession: "local-1", Remote: ""},
+				{TmuxSession: "remote-1", Remote: "dev-server"},
+				{TmuxSession: "local-2", Remote: ""},
+			},
+			filterMode: FilterAll,
+		}
+
+		filtered := m.getFilteredSessions()
+
+		if len(filtered) != 3 {
+			t.Errorf("FilterAll should show all 3 sessions, got %d", len(filtered))
+		}
+	})
+
+	t.Run("local filter shows only local sessions", func(t *testing.T) {
+		m := Model{
+			sessions: []SessionInfo{
+				{TmuxSession: "local-1", Remote: ""},
+				{TmuxSession: "remote-1", Remote: "dev-server"},
+				{TmuxSession: "local-2", Remote: ""},
+			},
+			filterMode: FilterLocal,
+		}
+
+		filtered := m.getFilteredSessions()
+
+		if len(filtered) != 2 {
+			t.Errorf("FilterLocal should show 2 sessions, got %d", len(filtered))
+		}
+		for _, s := range filtered {
+			if s.Remote != "" {
+				t.Errorf("FilterLocal should only show local sessions, got remote: %s", s.Remote)
+			}
+		}
+	})
+
+	t.Run("remote filter shows only remote sessions", func(t *testing.T) {
+		m := Model{
+			sessions: []SessionInfo{
+				{TmuxSession: "local-1", Remote: ""},
+				{TmuxSession: "remote-1", Remote: "dev-server"},
+				{TmuxSession: "remote-2", Remote: "staging"},
+			},
+			filterMode: FilterRemote,
+		}
+
+		filtered := m.getFilteredSessions()
+
+		if len(filtered) != 2 {
+			t.Errorf("FilterRemote should show 2 sessions, got %d", len(filtered))
+		}
+		for _, s := range filtered {
+			if s.Remote == "" {
+				t.Errorf("FilterRemote should only show remote sessions, got local")
+			}
+		}
+	})
+
+	t.Run("f key cycles filter mode when remotes configured", func(t *testing.T) {
+		remotes := []RemoteConfig{
+			{Name: "dev", Host: "dev.example.com"},
+		}
+		m := Model{
+			width:  80,
+			height: 24,
+			sessions: []SessionInfo{
+				{TmuxSession: "local-1", Remote: ""},
+				{TmuxSession: "remote-1", Remote: "dev"},
+			},
+			remotes:    remotes,
+			filterMode: FilterAll,
+		}
+
+		// Press 'f' to cycle to Local
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if updated.filterMode != FilterLocal {
+			t.Errorf("filter should cycle to Local, got %d", updated.filterMode)
+		}
+
+		// Press 'f' again to cycle to Remote
+		newModel, _ = updated.Update(msg)
+		updated = newModel.(Model)
+
+		if updated.filterMode != FilterRemote {
+			t.Errorf("filter should cycle to Remote, got %d", updated.filterMode)
+		}
+
+		// Press 'f' again to cycle back to All
+		newModel, _ = updated.Update(msg)
+		updated = newModel.(Model)
+
+		if updated.filterMode != FilterAll {
+			t.Errorf("filter should cycle back to All, got %d", updated.filterMode)
+		}
+	})
+
+	t.Run("f key does nothing when no remotes configured", func(t *testing.T) {
+		m := Model{
+			width:  80,
+			height: 24,
+			sessions: []SessionInfo{
+				{TmuxSession: "local-1", Remote: ""},
+			},
+			remotes:    nil, // No remotes
+			filterMode: FilterAll,
+		}
+
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if updated.filterMode != FilterAll {
+			t.Errorf("filter should stay at All when no remotes, got %d", updated.filterMode)
+		}
+	})
+
+	t.Run("cursor clamps when filter reduces list", func(t *testing.T) {
+		remotes := []RemoteConfig{
+			{Name: "dev", Host: "dev.example.com"},
+		}
+		m := Model{
+			width:  80,
+			height: 24,
+			sessions: []SessionInfo{
+				{TmuxSession: "local-1", Remote: ""},
+				{TmuxSession: "remote-1", Remote: "dev"},
+				{TmuxSession: "local-2", Remote: ""},
+			},
+			remotes:    remotes,
+			filterMode: FilterAll,
+			cursor:     2, // Pointing to third session
+		}
+
+		// Press 'f' to cycle to Local, then Remote (which only has 1 session)
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+		newModel, _ = updated.Update(msg)
+		updated = newModel.(Model)
+
+		// Now in FilterRemote with only 1 session, cursor should clamp to 0
+		if updated.cursor != 0 {
+			t.Errorf("cursor should clamp to 0 when filter reduces list, got %d", updated.cursor)
+		}
+	})
+
+	t.Run("filterModeString returns correct strings", func(t *testing.T) {
+		m := Model{}
+
+		m.filterMode = FilterAll
+		if m.filterModeString() != "all" {
+			t.Errorf("FilterAll should return 'all', got %s", m.filterModeString())
+		}
+
+		m.filterMode = FilterLocal
+		if m.filterModeString() != "local" {
+			t.Errorf("FilterLocal should return 'local', got %s", m.filterModeString())
+		}
+
+		m.filterMode = FilterRemote
+		if m.filterModeString() != "remote" {
+			t.Errorf("FilterRemote should return 'remote', got %s", m.filterModeString())
+		}
+	})
+}
+
+func TestFilteredSessionOperations(t *testing.T) {
+	t.Run("enter key works with filtered sessions", func(t *testing.T) {
+		m := Model{
+			width:  80,
+			height: 24,
+			sessions: []SessionInfo{
+				{TmuxSession: "local-1", Remote: ""},
+				{TmuxSession: "remote-1", Remote: "dev"},
+				{TmuxSession: "local-2", Remote: ""},
+			},
+			filterMode: FilterRemote,
+			cursor:     0, // First filtered session (remote-1)
+		}
+
+		msg := tea.KeyMsg{Type: tea.KeyEnter}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		// Should select the remote session, not the first overall session
+		if updated.lastSelectedSession != "remote-1" {
+			t.Errorf("enter should select 'remote-1', got '%s'", updated.lastSelectedSession)
+		}
+	})
+
+	t.Run("navigation wraps within filtered list", func(t *testing.T) {
+		m := Model{
+			width:  80,
+			height: 24,
+			sessions: []SessionInfo{
+				{TmuxSession: "local-1", Remote: ""},
+				{TmuxSession: "remote-1", Remote: "dev"},
+				{TmuxSession: "local-2", Remote: ""},
+			},
+			filterMode: FilterLocal, // Only 2 local sessions
+			cursor:     1,           // At the end of filtered list
+		}
+
+		msg := tea.KeyMsg{Type: tea.KeyDown}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		// Should wrap to 0 within filtered list
+		if updated.cursor != 0 {
+			t.Errorf("cursor should wrap to 0, got %d", updated.cursor)
+		}
+	})
+
+	t.Run("empty filter shows appropriate message", func(t *testing.T) {
+		m := Model{
+			width:  80,
+			height: 24,
+			sessions: []SessionInfo{
+				{TmuxSession: "local-1", Remote: ""},
+			},
+			filterMode: FilterRemote, // No remote sessions
+		}
+
+		result := m.View()
+
+		// Should show "No remote sessions" message
+		if !strings.Contains(result, "No remote sessions") {
+			t.Error("view should show 'No remote sessions' when filter yields no results")
+		}
+	})
+}

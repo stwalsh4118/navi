@@ -655,7 +655,7 @@ func TestRenderGitDiffView(t *testing.T) {
 			dialogMode: DialogGitDiff,
 			sessionToModify: &SessionInfo{
 				TmuxSession: "test",
-				CWD:         "/",  // Non-git dir for predictable output
+				CWD:         "/", // Non-git dir for predictable output
 				Git: &GitInfo{
 					Branch: "feature/test",
 					Dirty:  false,
@@ -676,7 +676,7 @@ func TestRenderGitDiffView(t *testing.T) {
 			dialogMode: DialogGitDiff,
 			sessionToModify: &SessionInfo{
 				TmuxSession: "test",
-				CWD:         "/",  // Non-git dir - no diff output
+				CWD:         "/", // Non-git dir - no diff output
 				Git: &GitInfo{
 					Branch: "main",
 					Dirty:  false,
@@ -697,7 +697,7 @@ func TestRenderGitDiffView(t *testing.T) {
 			dialogMode: DialogGitDiff,
 			sessionToModify: &SessionInfo{
 				TmuxSession: "test",
-				CWD:         "/",  // Non-git dir for testing
+				CWD:         "/", // Non-git dir for testing
 				Git: &GitInfo{
 					Branch: "main",
 					Dirty:  true,

@@ -24,7 +24,7 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 16 | User | As a user, I want git integration showing branch, status, and diffs so that I have project context without leaving the TUI | Proposed | [View Details](./16/prd.md) |
 | 17 | User | As a user, I want session history and bookmarks so that I can track what sessions accomplished and mark important ones | Proposed | [View Details](./17/prd.md) |
 | 18 | User | As a user, I want to export and replay session logs so that I can review past Claude interactions | Proposed | [View Details](./18/prd.md) |
-| 19 | User | As a user, I want to aggregate sessions from remote machines via SSH so that I can manage Claude across multiple servers | Proposed | [View Details](./19/prd.md) |
+| 19 | User | As a user, I want to aggregate sessions from remote machines via SSH so that I can manage Claude across multiple servers | Agreed | [View Details](./19/prd.md) |
 | 20 | User | As a user, I want a team dashboard to share session visibility so that my team can see each other's Claude sessions | Proposed | [View Details](./20/prd.md) |
 | 21 | User | As a user, I want auto-start configuration and custom hooks so that I can automate session setup and respond to status changes | Proposed | [View Details](./21/prd.md) |
 | 22 | User | As a user, I want permission rules to auto-approve certain tool calls so that low-risk operations don't interrupt my workflow | Proposed | [View Details](./22/prd.md) |
@@ -64,3 +64,4 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 2026-02-05 12:00:00 | 25 | Created | Mouse Support - click, scroll interactions | AI_Agent |
 | 2026-02-05 08:02:16 | 7 | Status Change | Proposed → Agreed - Approved for task breakdown | User |
 | 2026-02-05 12:00:00 | 11 | Status Change | Proposed → Agreed - Approved for task breakdown | User |
+| 2026-02-05 13:58:48 | 19 | Status Change | Proposed → Agreed - Approved for task breakdown | User |

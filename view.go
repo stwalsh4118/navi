@@ -27,13 +27,20 @@ func (m Model) renderSession(s SessionInfo, selected bool, width int) string {
 		marker = selectedMarker
 	}
 
-	// First line: marker + icon + name + age
+	// First line: marker + icon + name + [remote] + age
 	icon := statusIcon(s.Status)
 	name := boldStyle.Render(s.TmuxSession)
+
+	// Add remote label if this is a remote session
+	remoteLabel := ""
+	if s.Remote != "" {
+		remoteLabel = " " + dimStyle.Render(fmt.Sprintf("[%s]", s.Remote))
+	}
+
 	age := formatAge(s.Timestamp)
 
 	// Calculate padding for right-aligned age
-	firstLine := fmt.Sprintf("%s%s  %s", marker, icon, name)
+	firstLine := fmt.Sprintf("%s%s  %s%s", marker, icon, name, remoteLabel)
 	padding := width - lipgloss.Width(firstLine) - len(age) - 2
 	if padding < 1 {
 		padding = 1
@@ -149,25 +156,69 @@ func truncate(s string, maxLen int) string {
 // Header constant
 const headerTitle = "Claude Sessions"
 
-// renderHeader renders the header box with title and session count.
+// renderHeader renders the header box with title, session count, and remote status.
 func (m Model) renderHeader() string {
-	count := fmt.Sprintf("%d active", len(m.sessions))
+	// Count local and remote sessions
+	localCount, remoteCount := 0, 0
+	for _, s := range m.sessions {
+		if s.Remote == "" {
+			localCount++
+		} else {
+			remoteCount++
+		}
+	}
+
+	// Build count string
+	var countStr string
+	if remoteCount > 0 {
+		countStr = fmt.Sprintf("%d local, %d remote", localCount, remoteCount)
+	} else {
+		countStr = fmt.Sprintf("%d active", len(m.sessions))
+	}
+
+	// Build remote status indicators if remotes are configured
+	remoteStatus := ""
+	if m.sshPool != nil && len(m.remotes) > 0 {
+		var indicators []string
+		for _, remote := range m.remotes {
+			status := m.sshPool.GetStatus(remote.Name)
+			var indicator string
+			switch status.Status {
+			case StatusConnected:
+				indicator = greenStyle.Render(fmt.Sprintf("[%s:✓]", remote.Name))
+			case StatusError:
+				indicator = redStyle.Render(fmt.Sprintf("[%s:✗]", remote.Name))
+			default:
+				indicator = dimStyle.Render(fmt.Sprintf("[%s:-]", remote.Name))
+			}
+			indicators = append(indicators, indicator)
+		}
+		remoteStatus = " " + strings.Join(indicators, " ")
+	}
 
 	// Calculate padding for count on right
 	// Account for box border padding (1 on each side)
 	contentWidth := m.width - 4
-	padding := contentWidth - lipgloss.Width(headerTitle) - lipgloss.Width(count)
+	leftPart := headerTitle + remoteStatus
+	padding := contentWidth - lipgloss.Width(leftPart) - lipgloss.Width(countStr)
 	if padding < 1 {
 		padding = 1
 	}
 
-	content := headerTitle + strings.Repeat(" ", padding) + count
+	content := leftPart + strings.Repeat(" ", padding) + countStr
 	return boxStyle.Width(m.width - 2).Render(content)
 }
 
 // renderFooter renders the footer box with keybinding help.
 func (m Model) renderFooter() string {
 	var parts []string
+
+	// Check if currently selected session is remote
+	isRemoteSelected := false
+	filteredSessions := m.getFilteredSessions()
+	if len(filteredSessions) > 0 && m.cursor < len(filteredSessions) {
+		isRemoteSelected = filteredSessions[m.cursor].Remote != ""
+	}
 
 	// Always show these
 	parts = append(parts, "↑/↓ nav", "⏎ attach", "p preview")
@@ -177,8 +228,20 @@ func (m Model) renderFooter() string {
 		parts = append(parts, "L layout", "W wrap", "[/] resize")
 	}
 
-	// Always show these
-	parts = append(parts, "d dismiss", "n new", "x kill", "R rename", "G git", "r refresh", "q quit")
+	// Show filter option with current state if remotes are configured
+	if len(m.remotes) > 0 {
+		filterLabel := fmt.Sprintf("f filter:%s", m.filterModeString())
+		parts = append(parts, filterLabel)
+	}
+
+	// Show local-only options only when a local session is selected
+	if !isRemoteSelected {
+		parts = append(parts, "d dismiss", "n new", "x kill", "R rename", "G git")
+	} else {
+		parts = append(parts, "n new") // new session is always available
+	}
+
+	parts = append(parts, "r refresh", "q quit")
 
 	footerHelp := strings.Join(parts, "  ")
 	return boxStyle.Width(m.width - 2).Render(footerHelp)
@@ -197,9 +260,10 @@ func (m Model) renderPreview(width, height int) string {
 	var b strings.Builder
 
 	// Get session name for header
+	filteredSessions := m.getFilteredSessions()
 	sessionName := ""
-	if len(m.sessions) > 0 && m.cursor < len(m.sessions) {
-		sessionName = m.sessions[m.cursor].TmuxSession
+	if len(filteredSessions) > 0 && m.cursor < len(filteredSessions) {
+		sessionName = filteredSessions[m.cursor].TmuxSession
 	}
 
 	// Build header with session name
@@ -267,11 +331,19 @@ func (m Model) renderPreview(width, height int) string {
 func (m Model) renderSessionList(width int) string {
 	var b strings.Builder
 
-	if len(m.sessions) == 0 {
-		b.WriteString(dimStyle.Render(noSessionsMessage))
+	filteredSessions := m.getFilteredSessions()
+	if len(filteredSessions) == 0 {
+		// Show appropriate message based on filter state
+		var message string
+		if len(m.sessions) == 0 {
+			message = noSessionsMessage
+		} else {
+			message = fmt.Sprintf("  No %s sessions", m.filterModeString())
+		}
+		b.WriteString(dimStyle.Render(message))
 		b.WriteString("\n")
 	} else {
-		for i, session := range m.sessions {
+		for i, session := range filteredSessions {
 			selected := i == m.cursor
 			b.WriteString(m.renderSession(session, selected, width))
 			b.WriteString("\n")

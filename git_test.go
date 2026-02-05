@@ -513,7 +513,7 @@ func TestGitCacheIntegration(t *testing.T) {
 	// Test pollGitInfoCmd with current directory
 	sessions := []SessionInfo{
 		{TmuxSession: "test1", CWD: cwd},
-		{TmuxSession: "test2", CWD: "/"},        // non-git
+		{TmuxSession: "test2", CWD: "/"},            // non-git
 		{TmuxSession: "test3", CWD: "/nonexistent"}, // non-existent
 	}
 
