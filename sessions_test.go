@@ -139,3 +139,179 @@ func TestSessionInfoJSONBackwardCompatibility(t *testing.T) {
 		}
 	})
 }
+
+func TestSessionInfoMetricsJSONBackwardCompatibility(t *testing.T) {
+	t.Run("parses JSON without metrics field", func(t *testing.T) {
+		// Old format without metrics field
+		jsonData := `{
+			"tmux_session": "test-session",
+			"status": "working",
+			"message": "Processing...",
+			"cwd": "/home/user/project",
+			"timestamp": 1738627200
+		}`
+
+		var session SessionInfo
+		if err := json.Unmarshal([]byte(jsonData), &session); err != nil {
+			t.Fatalf("Failed to parse JSON without metrics field: %v", err)
+		}
+
+		if session.TmuxSession != "test-session" {
+			t.Errorf("TmuxSession mismatch: got %q", session.TmuxSession)
+		}
+		if session.Metrics != nil {
+			t.Error("Expected Metrics to be nil for JSON without metrics field")
+		}
+	})
+
+	t.Run("parses JSON with full metrics", func(t *testing.T) {
+		// New format with full metrics
+		jsonData := `{
+			"tmux_session": "hyperion",
+			"status": "working",
+			"message": "Implementing feature...",
+			"cwd": "/home/user/projects/hyperion",
+			"timestamp": 1738627200,
+			"metrics": {
+				"tokens": {
+					"input": 45000,
+					"output": 12000,
+					"total": 57000
+				},
+				"time": {
+					"started": 1738620000,
+					"total_seconds": 7200,
+					"working_seconds": 3600,
+					"waiting_seconds": 1800
+				},
+				"tools": {
+					"recent": ["Read", "Edit", "Bash"],
+					"counts": {
+						"Read": 45,
+						"Edit": 12,
+						"Bash": 8,
+						"Write": 3
+					}
+				}
+			}
+		}`
+
+		var session SessionInfo
+		if err := json.Unmarshal([]byte(jsonData), &session); err != nil {
+			t.Fatalf("Failed to parse JSON with metrics field: %v", err)
+		}
+
+		if session.Metrics == nil {
+			t.Fatal("Expected Metrics to be non-nil")
+		}
+		if session.Metrics.Tokens == nil {
+			t.Fatal("Expected Metrics.Tokens to be non-nil")
+		}
+		if session.Metrics.Tokens.Total != 57000 {
+			t.Errorf("Tokens.Total mismatch: got %d", session.Metrics.Tokens.Total)
+		}
+		if session.Metrics.Time == nil {
+			t.Fatal("Expected Metrics.Time to be non-nil")
+		}
+		if session.Metrics.Time.WorkingSeconds != 3600 {
+			t.Errorf("Time.WorkingSeconds mismatch: got %d", session.Metrics.Time.WorkingSeconds)
+		}
+		if session.Metrics.Tools == nil {
+			t.Fatal("Expected Metrics.Tools to be non-nil")
+		}
+		if len(session.Metrics.Tools.Recent) != 3 {
+			t.Errorf("Tools.Recent length mismatch: got %d", len(session.Metrics.Tools.Recent))
+		}
+		if session.Metrics.Tools.Counts["Read"] != 45 {
+			t.Errorf("Tools.Counts[Read] mismatch: got %d", session.Metrics.Tools.Counts["Read"])
+		}
+	})
+
+	t.Run("parses JSON with partial metrics", func(t *testing.T) {
+		// Format with only time metrics
+		jsonData := `{
+			"tmux_session": "test-session",
+			"status": "working",
+			"cwd": "/tmp",
+			"timestamp": 1738627200,
+			"metrics": {
+				"time": {
+					"started": 1738620000,
+					"total_seconds": 7200,
+					"working_seconds": 3600,
+					"waiting_seconds": 1800
+				}
+			}
+		}`
+
+		var session SessionInfo
+		if err := json.Unmarshal([]byte(jsonData), &session); err != nil {
+			t.Fatalf("Failed to parse JSON with partial metrics: %v", err)
+		}
+
+		if session.Metrics == nil {
+			t.Fatal("Expected Metrics to be non-nil")
+		}
+		if session.Metrics.Time == nil {
+			t.Fatal("Expected Metrics.Time to be non-nil")
+		}
+		if session.Metrics.Tokens != nil {
+			t.Error("Expected Metrics.Tokens to be nil")
+		}
+		if session.Metrics.Tools != nil {
+			t.Error("Expected Metrics.Tools to be nil")
+		}
+	})
+
+	t.Run("serializes without metrics field when nil", func(t *testing.T) {
+		session := SessionInfo{
+			TmuxSession: "test",
+			Status:      "working",
+			CWD:         "/tmp",
+			Timestamp:   1234567890,
+			Metrics:     nil,
+		}
+
+		data, err := json.Marshal(session)
+		if err != nil {
+			t.Fatalf("Failed to marshal: %v", err)
+		}
+
+		// Should not contain "metrics" key due to omitempty
+		if strings.Contains(string(data), `"metrics"`) {
+			t.Error("Expected JSON to not contain metrics field when nil")
+		}
+	})
+
+	t.Run("serializes with metrics field when present", func(t *testing.T) {
+		session := SessionInfo{
+			TmuxSession: "test",
+			Status:      "working",
+			CWD:         "/tmp",
+			Timestamp:   1234567890,
+			Metrics: &Metrics{
+				Tokens: &TokenMetrics{
+					Input:  1000,
+					Output: 500,
+					Total:  1500,
+				},
+			},
+		}
+
+		data, err := json.Marshal(session)
+		if err != nil {
+			t.Fatalf("Failed to marshal: %v", err)
+		}
+
+		// Should contain "metrics" key
+		if !strings.Contains(string(data), `"metrics"`) {
+			t.Error("Expected JSON to contain metrics field")
+		}
+		if !strings.Contains(string(data), `"tokens"`) {
+			t.Error("Expected JSON to contain tokens")
+		}
+		if !strings.Contains(string(data), `"total":1500`) {
+			t.Error("Expected JSON to contain total:1500")
+		}
+	})
+}
