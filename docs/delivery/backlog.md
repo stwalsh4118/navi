@@ -17,7 +17,7 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 9 | User | As a user, I want desktop notifications when sessions need attention so that I don't have to constantly watch the TUI | Proposed | [View Details](./9/prd.md) |
 | 10 | User | As a user, I want webhook integrations (Slack, Discord) so that I can receive session alerts in my team communication tools | Proposed | [View Details](./10/prd.md) |
 | 11 | User | As a user, I want a preview pane showing recent session output so that I can see what's happening without fully attaching | Agreed | [View Details](./11/prd.md) |
-| 12 | User | As a user, I want to see session metrics (token usage, time tracking, tool activity) so that I can understand resource consumption | Proposed | [View Details](./12/prd.md) |
+| 12 | User | As a user, I want to see session metrics (token usage, time tracking, tool activity) so that I can understand resource consumption | Agreed | [View Details](./12/prd.md) |
 | 13 | User | As a user, I want fuzzy search and filtering so that I can quickly find sessions when I have many running | Proposed | [View Details](./13/prd.md) |
 | 14 | User | As a user, I want to select multiple sessions and perform bulk actions so that I can efficiently manage many sessions at once | Proposed | [View Details](./14/prd.md) |
 | 15 | User | As a user, I want a split view to compare two sessions side-by-side so that I can monitor related work simultaneously | Proposed | [View Details](./15/prd.md) |
@@ -65,3 +65,4 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 2026-02-05 08:02:16 | 7 | Status Change | Proposed → Agreed - Approved for task breakdown | User |
 | 2026-02-05 12:00:00 | 11 | Status Change | Proposed → Agreed - Approved for task breakdown | User |
 | 2026-02-05 13:58:48 | 19 | Status Change | Proposed → Agreed - Approved for task breakdown | User |
+| 2026-02-05 16:24:09 | 12 | Status Change | Proposed → Agreed - Approved for task breakdown | User |

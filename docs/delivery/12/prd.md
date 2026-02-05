@@ -123,4 +123,4 @@ Metrics require extending the hook system to capture more data:
 
 ## Related Tasks
 
-See [Tasks](./tasks.md)
+[View Tasks](./tasks.md)
