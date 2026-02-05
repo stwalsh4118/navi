@@ -165,6 +165,67 @@ func previewDebounceCmd() tea.Cmd {
 	})
 }
 
+// gitTickCmd returns a command that fires after gitPollInterval.
+func gitTickCmd() tea.Cmd {
+	return tea.Tick(gitPollInterval, func(t time.Time) tea.Msg {
+		return gitTickMsg(t)
+	})
+}
+
+// pollGitInfoCmd returns a command that polls git info for all session working directories.
+// Git info is fetched concurrently for all sessions to minimize latency.
+func pollGitInfoCmd(sessions []SessionInfo) tea.Cmd {
+	return func() tea.Msg {
+		// Collect unique CWDs to avoid duplicate work
+		cwds := make(map[string]bool)
+		for _, session := range sessions {
+			if session.CWD != "" {
+				cwds[session.CWD] = true
+			}
+		}
+
+		if len(cwds) == 0 {
+			return gitInfoMsg{cache: make(map[string]*GitInfo)}
+		}
+
+		// Fetch git info concurrently
+		type result struct {
+			cwd  string
+			info *GitInfo
+		}
+		results := make(chan result, len(cwds))
+
+		for cwd := range cwds {
+			go func(cwd string) {
+				dir := expandPath(cwd)
+				info := getGitInfo(dir)
+				results <- result{cwd: cwd, info: info}
+			}(cwd)
+		}
+
+		// Collect results
+		cache := make(map[string]*GitInfo)
+		for i := 0; i < len(cwds); i++ {
+			r := <-results
+			if r.info != nil {
+				cache[r.cwd] = r.info
+			}
+		}
+
+		return gitInfoMsg{cache: cache}
+	}
+}
+
+// fetchPRCmd returns a command that fetches PR info for a specific directory.
+// This is called lazily (e.g., when opening git detail view) to avoid slow gh CLI calls on every poll.
+func fetchPRCmd(cwd string) tea.Cmd {
+	return func() tea.Msg {
+		dir := expandPath(cwd)
+		prNum := getGitPRNumber(dir)
+		return gitPRMsg{cwd: cwd, prNum: prNum}
+	}
+}
+
 // pollSessions orchestrates reading, cleaning stale, and sorting sessions.
 // Returns a sessionsMsg with the current session list.
 func pollSessions() tea.Msg {

@@ -14,11 +14,12 @@ import (
 // SessionInfo represents the status data for a single Claude Code session.
 // This struct matches the JSON format written by the navi hook scripts.
 type SessionInfo struct {
-	TmuxSession string `json:"tmux_session"`
-	Status      string `json:"status"`
-	Message     string `json:"message"`
-	CWD         string `json:"cwd"`
-	Timestamp   int64  `json:"timestamp"`
+	TmuxSession string   `json:"tmux_session"`
+	Status      string   `json:"status"`
+	Message     string   `json:"message"`
+	CWD         string   `json:"cwd"`
+	Timestamp   int64    `json:"timestamp"`
+	Git         *GitInfo `json:"git,omitempty"` // Git repository info (nil if not a git repo)
 }
 
 // Model is the Bubble Tea application state for navi.
@@ -51,6 +52,9 @@ type Model struct {
 	previewWrap        bool          // Whether to wrap long lines (true) or truncate (false)
 	previewLastCapture time.Time     // Last capture timestamp for debouncing
 	previewLastCursor  int           // Last cursor position for detecting cursor changes
+
+	// Git info cache
+	gitCache map[string]*GitInfo // Cache of git info by session working directory
 }
 
 // Message types for Bubble Tea communication.
@@ -86,10 +90,28 @@ type previewTickMsg time.Time
 // previewDebounceMsg is sent after cursor movement debounce delay.
 type previewDebounceMsg struct{}
 
+// gitTickMsg is sent to trigger periodic git info refresh.
+type gitTickMsg time.Time
+
+// gitInfoMsg is returned after polling git info for all sessions.
+type gitInfoMsg struct {
+	cache map[string]*GitInfo // Map of CWD to GitInfo
+}
+
+// gitPRMsg is returned after fetching PR info for a specific directory.
+type gitPRMsg struct {
+	cwd   string
+	prNum int
+}
+
 // Init implements tea.Model.
 // Starts the tick command and performs initial poll.
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(tickCmd(), pollSessions)
+	// Initialize git cache if nil
+	if m.gitCache == nil {
+		m.gitCache = make(map[string]*GitInfo)
+	}
+	return tea.Batch(tickCmd(), pollSessions, gitTickCmd())
 }
 
 // Update implements tea.Model.
@@ -276,6 +298,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
+		case "G":
+			// Open git detail view for selected session
+			if len(m.sessions) > 0 && m.cursor < len(m.sessions) {
+				session := m.sessions[m.cursor]
+				m.sessionToModify = &session
+				m.dialogMode = DialogGitDetail
+				m.dialogError = ""
+				// Lazily fetch PR info in background (only when opening detail view)
+				if session.CWD != "" && session.Git != nil {
+					return m, fetchPRCmd(session.CWD)
+				}
+				return m, nil
+			}
+			return m, nil
+
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		}
@@ -288,12 +325,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Update sessions list
 		m.sessions = msg
 
+		// Merge cached git info into sessions
+		if m.gitCache != nil {
+			for i := range m.sessions {
+				if info, ok := m.gitCache[m.sessions[i].CWD]; ok {
+					m.sessions[i].Git = info
+				}
+			}
+		}
+
+		// Trigger immediate git poll if cache is empty and we have sessions
+		// This makes git info appear quickly on startup instead of waiting for gitPollInterval
+		needsGitPoll := len(m.gitCache) == 0 && len(m.sessions) > 0
+
 		// Try to restore cursor to last selected session if set
 		if m.lastSelectedSession != "" {
 			for i, s := range m.sessions {
 				if s.TmuxSession == m.lastSelectedSession {
 					m.cursor = i
 					m.lastSelectedSession = "" // Clear after restoring
+					if needsGitPoll {
+						return m, pollGitInfoCmd(m.sessions)
+					}
 					return m, nil
 				}
 			}
@@ -305,6 +358,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cursor = len(m.sessions) - 1
 		} else if len(m.sessions) == 0 {
 			m.cursor = 0
+		}
+
+		if needsGitPoll {
+			return m, pollGitInfoCmd(m.sessions)
 		}
 
 	case tea.WindowSizeMsg:
@@ -397,6 +454,45 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.cursor < len(m.sessions) {
 			return m, capturePreviewCmd(m.sessions[m.cursor].TmuxSession)
+		}
+		return m, nil
+
+	case gitTickMsg:
+		// Periodic git info refresh
+		if len(m.sessions) == 0 {
+			// No sessions, just schedule next tick
+			return m, gitTickCmd()
+		}
+		// Poll git info for all sessions and schedule next tick
+		return m, tea.Batch(pollGitInfoCmd(m.sessions), gitTickCmd())
+
+	case gitInfoMsg:
+		// Initialize cache if nil
+		if m.gitCache == nil {
+			m.gitCache = make(map[string]*GitInfo)
+		}
+		// Update git cache with new data
+		for cwd, info := range msg.cache {
+			m.gitCache[cwd] = info
+		}
+		// Update sessions with cached git info
+		for i := range m.sessions {
+			if info, ok := m.gitCache[m.sessions[i].CWD]; ok {
+				m.sessions[i].Git = info
+			}
+		}
+		return m, nil
+
+	case gitPRMsg:
+		// Update PR number for the session being viewed (lazy-loaded)
+		if m.sessionToModify != nil && m.sessionToModify.CWD == msg.cwd && m.sessionToModify.Git != nil {
+			m.sessionToModify.Git.PRNum = msg.prNum
+		}
+		// Also update the cache so it persists
+		if m.gitCache != nil {
+			if info, ok := m.gitCache[msg.cwd]; ok {
+				info.PRNum = msg.prNum
+			}
 		}
 		return m, nil
 	}
@@ -516,6 +612,12 @@ func capturePreviewCmd(sessionName string) tea.Cmd {
 func (m Model) updateDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
+		// Handle escape based on current dialog mode
+		if m.dialogMode == DialogGitDiff {
+			// Return to git detail view from diff view
+			m.dialogMode = DialogGitDetail
+			return m, nil
+		}
 		// Close any dialog and reset state
 		m.dialogMode = DialogNone
 		m.dialogError = ""
@@ -545,13 +647,20 @@ func (m Model) updateDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-	case "enter":
+	case "enter", "o":
 		// Handle submission based on dialog type
 		switch m.dialogMode {
 		case DialogNewSession:
-			return m.submitNewSession()
+			if msg.String() == "enter" {
+				return m.submitNewSession()
+			}
 		case DialogRename:
-			return m.submitRename()
+			if msg.String() == "enter" {
+				return m.submitRename()
+			}
+		case DialogGitDetail:
+			// Open PR/issue link if available
+			return m.openGitLink()
 		}
 
 	case "y":
@@ -566,6 +675,13 @@ func (m Model) updateDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.dialogMode = DialogNone
 			m.dialogError = ""
 			m.sessionToModify = nil
+			return m, nil
+		}
+
+	case "d":
+		// Show diff view from git detail view
+		if m.dialogMode == DialogGitDetail && m.sessionToModify != nil && m.sessionToModify.Git != nil {
+			m.dialogMode = DialogGitDiff
 			return m, nil
 		}
 	}
@@ -653,6 +769,48 @@ func (m Model) submitRename() (tea.Model, tea.Cmd) {
 
 	// Rename the session
 	return m, renameSessionCmd(oldName, newName)
+}
+
+// openGitLink opens the GitHub PR link in the system browser.
+func (m Model) openGitLink() (tea.Model, tea.Cmd) {
+	if m.sessionToModify == nil || m.sessionToModify.Git == nil {
+		m.dialogError = "No git information available"
+		return m, nil
+	}
+
+	git := m.sessionToModify.Git
+
+	// Check if we have a PR number and a GitHub remote
+	if git.PRNum == 0 {
+		m.dialogError = "No PR found for this branch"
+		return m, nil
+	}
+
+	if git.Remote == "" {
+		m.dialogError = "No remote URL configured"
+		return m, nil
+	}
+
+	ghInfo := parseGitHubRemote(git.Remote)
+	if ghInfo == nil {
+		m.dialogError = "Remote is not a GitHub repository"
+		return m, nil
+	}
+
+	// Construct the PR URL
+	url := ghInfo.PRURL(git.PRNum)
+
+	// Open the URL in the browser
+	if err := openURL(url); err != nil {
+		m.dialogError = "Failed to open browser: " + err.Error()
+		return m, nil
+	}
+
+	// Close the dialog after successful open
+	m.dialogMode = DialogNone
+	m.dialogError = ""
+	m.sessionToModify = nil
+	return m, nil
 }
 
 // closeDialog resets dialog state.

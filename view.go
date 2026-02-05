@@ -49,7 +49,14 @@ func (m Model) renderSession(s SessionInfo, selected bool, width int) string {
 	b.WriteString(rowIndent)
 	b.WriteString(dimStyle.Render(cwd))
 
-	// Third line: message if present (indented, dimmed/italic)
+	// Third line: git info if present (indented)
+	if s.Git != nil {
+		b.WriteString("\n")
+		b.WriteString(rowIndent)
+		b.WriteString(renderGitInfo(s.Git, width-len(rowIndent)))
+	}
+
+	// Fourth line: message if present (indented, dimmed/italic)
 	if s.Message != "" {
 		b.WriteString("\n")
 		msg := truncate(s.Message, width-len(rowIndent))
@@ -58,6 +65,50 @@ func (m Model) renderSession(s SessionInfo, selected bool, width int) string {
 	}
 
 	return b.String()
+}
+
+// renderGitInfo renders git status info with appropriate coloring.
+// Format: "branch-name ● +3 -1 [PR#42]"
+func renderGitInfo(git *GitInfo, maxWidth int) string {
+	if git == nil {
+		return ""
+	}
+
+	var parts []string
+
+	// Branch name in cyan (truncate if too long)
+	branch := git.Branch
+	if len(branch) > gitMaxBranchLength {
+		branch = branch[:gitMaxBranchLength-3] + "..."
+	}
+	parts = append(parts, cyanStyle.Render(branch))
+
+	// Dirty indicator in yellow
+	if git.Dirty {
+		parts = append(parts, yellowStyle.Render(gitDirtyIndicator))
+	}
+
+	// Ahead count in green
+	if git.Ahead > 0 {
+		parts = append(parts, greenStyle.Render(fmt.Sprintf("%s%d", gitAheadPrefix, git.Ahead)))
+	}
+
+	// Behind count in red
+	if git.Behind > 0 {
+		parts = append(parts, redStyle.Render(fmt.Sprintf("%s%d", gitBehindPrefix, git.Behind)))
+	}
+
+	// PR number if detected via gh CLI
+	if git.PRNum > 0 {
+		parts = append(parts, dimStyle.Render(fmt.Sprintf("[%s%d]", gitPRPrefix, git.PRNum)))
+	}
+
+	result := strings.Join(parts, " ")
+
+	// Note: We don't truncate here since colors add ANSI codes that affect length calculation
+	// The branch truncation above handles the main size concern
+
+	return result
 }
 
 // formatAge formats a Unix timestamp as a human-readable age string.
@@ -127,7 +178,7 @@ func (m Model) renderFooter() string {
 	}
 
 	// Always show these
-	parts = append(parts, "d dismiss", "n new", "x kill", "R rename", "r refresh", "q quit")
+	parts = append(parts, "d dismiss", "n new", "x kill", "R rename", "G git", "r refresh", "q quit")
 
 	footerHelp := strings.Join(parts, "  ")
 	return boxStyle.Width(m.width - 2).Render(footerHelp)
@@ -230,6 +281,196 @@ func (m Model) renderSessionList(width int) string {
 	return b.String()
 }
 
+// gitDetailWidth is the width of the git detail dialog
+const gitDetailWidth = 70
+
+// renderGitDetailView renders the git detail view dialog.
+func (m Model) renderGitDetailView() string {
+	var b strings.Builder
+
+	// Title
+	b.WriteString(dialogTitleStyle.Render("Git Information"))
+	b.WriteString("\n\n")
+
+	if m.sessionToModify == nil {
+		b.WriteString(dimStyle.Render("No session selected"))
+		b.WriteString("\n\n")
+		b.WriteString(dimStyle.Render("Esc: close"))
+		content := b.String()
+		dialog := dialogBoxStyle.Width(gitDetailWidth).Render(content)
+		return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, dialog)
+	}
+
+	session := m.sessionToModify
+
+	// Session name
+	b.WriteString(fmt.Sprintf("Session: %s\n", boldStyle.Render(session.TmuxSession)))
+	b.WriteString(fmt.Sprintf("CWD: %s\n\n", dimStyle.Render(session.CWD)))
+
+	// Check if git info is available
+	if session.Git == nil {
+		b.WriteString(dimStyle.Render("Not a git repository"))
+		b.WriteString("\n\n")
+		b.WriteString(dimStyle.Render("Esc: close"))
+		content := b.String()
+		dialog := dialogBoxStyle.Width(gitDetailWidth).Render(content)
+		return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, dialog)
+	}
+
+	git := session.Git
+
+	// Branch info
+	b.WriteString(fmt.Sprintf("Branch: %s", cyanStyle.Render(git.Branch)))
+	if git.Dirty {
+		b.WriteString(fmt.Sprintf(" %s", yellowStyle.Render(gitDirtyIndicator+" (uncommitted changes)")))
+	} else {
+		b.WriteString(fmt.Sprintf(" %s", greenStyle.Render("(clean)")))
+	}
+	b.WriteString("\n")
+
+	// Ahead/behind info
+	if git.Ahead > 0 || git.Behind > 0 {
+		b.WriteString("Status: ")
+		if git.Ahead > 0 {
+			b.WriteString(greenStyle.Render(fmt.Sprintf("%d ahead", git.Ahead)))
+		}
+		if git.Ahead > 0 && git.Behind > 0 {
+			b.WriteString(", ")
+		}
+		if git.Behind > 0 {
+			b.WriteString(redStyle.Render(fmt.Sprintf("%d behind", git.Behind)))
+		}
+		b.WriteString(" remote\n")
+	}
+
+	// Last commit
+	if git.LastCommit != "" {
+		b.WriteString(fmt.Sprintf("Last commit: %s\n", dimStyle.Render(git.LastCommit)))
+	}
+
+	// Remote URL
+	if git.Remote != "" {
+		b.WriteString(fmt.Sprintf("Remote: %s\n", dimStyle.Render(git.Remote)))
+
+		// GitHub info if available
+		ghInfo := parseGitHubRemote(git.Remote)
+		if ghInfo != nil {
+			b.WriteString(fmt.Sprintf("GitHub: %s/%s\n", ghInfo.Owner, ghInfo.Repo))
+		}
+	}
+
+	// PR number if detected via gh CLI
+	if git.PRNum > 0 {
+		b.WriteString(fmt.Sprintf("Pull Request: %s\n", highlightStyle.Render(fmt.Sprintf("#%d", git.PRNum))))
+
+		// Show URL if we have GitHub info
+		ghInfo := parseGitHubRemote(git.Remote)
+		if ghInfo != nil {
+			url := ghInfo.PRURL(git.PRNum)
+			b.WriteString(fmt.Sprintf("Link: %s\n", dimStyle.Render(url)))
+		}
+	}
+
+	b.WriteString("\n")
+
+	// Keybindings
+	var keys []string
+	keys = append(keys, "d: diff")
+	if git.PRNum > 0 && git.Remote != "" {
+		keys = append(keys, "o: open PR")
+	}
+	keys = append(keys, "Esc: close")
+	b.WriteString(dimStyle.Render(strings.Join(keys, "  ")))
+
+	content := b.String()
+	dialog := dialogBoxStyle.Width(gitDetailWidth).Render(content)
+	return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, dialog)
+}
+
+// renderGitDiffView renders the git diff view dialog.
+func (m Model) renderGitDiffView() string {
+	var b strings.Builder
+
+	// Title
+	b.WriteString(dialogTitleStyle.Render("Git Changes"))
+	b.WriteString("\n\n")
+
+	if m.sessionToModify == nil || m.sessionToModify.Git == nil {
+		b.WriteString(dimStyle.Render("No git information available"))
+		b.WriteString("\n\n")
+		b.WriteString(dimStyle.Render("Esc: back"))
+		content := b.String()
+		dialog := dialogBoxStyle.Width(gitDetailWidth).Render(content)
+		return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, dialog)
+	}
+
+	session := m.sessionToModify
+	git := session.Git
+
+	// Show branch and dirty status
+	b.WriteString(fmt.Sprintf("Branch: %s", cyanStyle.Render(git.Branch)))
+	if git.Dirty {
+		b.WriteString(fmt.Sprintf(" %s", yellowStyle.Render(gitDirtyIndicator)))
+	}
+	b.WriteString("\n\n")
+
+	// Get diff stat
+	dir := expandPath(session.CWD)
+	diffStat := getGitDiffStat(dir)
+
+	if diffStat == "" {
+		if git.Dirty {
+			// Dirty but no diff - might be staged changes only
+			b.WriteString(dimStyle.Render("No unstaged changes (changes may be staged)"))
+		} else {
+			b.WriteString(greenStyle.Render("Working tree clean - no changes"))
+		}
+	} else {
+		// Show the diff stat output
+		b.WriteString(boldStyle.Render("Changed files:"))
+		b.WriteString("\n")
+
+		// Split and render each line of diff stat
+		lines := strings.Split(diffStat, "\n")
+		maxDisplayLines := 20 // Limit lines to keep dialog manageable
+		displayLines := lines
+		if len(lines) > maxDisplayLines {
+			displayLines = lines[:maxDisplayLines-1]
+			displayLines = append(displayLines, dimStyle.Render(fmt.Sprintf("... and %d more files", len(lines)-maxDisplayLines+1)))
+		}
+
+		for _, line := range displayLines {
+			// Color insertions green, deletions red
+			if strings.Contains(line, "|") {
+				// File stat line: "filename | 10 ++--"
+				parts := strings.SplitN(line, "|", 2)
+				if len(parts) == 2 {
+					filename := parts[0]
+					stats := parts[1]
+					// Color the + and - characters
+					stats = strings.ReplaceAll(stats, "+", greenStyle.Render("+"))
+					stats = strings.ReplaceAll(stats, "-", redStyle.Render("-"))
+					b.WriteString(fmt.Sprintf("%s|%s\n", filename, stats))
+				} else {
+					b.WriteString(line + "\n")
+				}
+			} else if strings.Contains(line, "insertion") || strings.Contains(line, "deletion") {
+				// Summary line
+				b.WriteString(dimStyle.Render(line) + "\n")
+			} else {
+				b.WriteString(line + "\n")
+			}
+		}
+	}
+
+	b.WriteString("\n")
+	b.WriteString(dimStyle.Render("Esc: back to git info"))
+
+	content := b.String()
+	dialog := dialogBoxStyle.Width(gitDetailWidth).Render(content)
+	return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, dialog)
+}
+
 // renderDialog renders the dialog overlay when dialogMode is set.
 // Returns empty string if no dialog is open.
 func (m Model) renderDialog() string {
@@ -278,6 +519,12 @@ func (m Model) renderDialog() string {
 		b.WriteString(m.nameInput.View())
 		b.WriteString("\n\n")
 		b.WriteString(dimStyle.Render("Enter: rename  Esc: cancel"))
+	case DialogGitDetail:
+		b.Reset() // Clear the builder for custom git view
+		return m.renderGitDetailView()
+	case DialogGitDiff:
+		b.Reset() // Clear the builder for custom diff view
+		return m.renderGitDiffView()
 	}
 
 	// Error message if present
