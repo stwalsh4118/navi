@@ -158,6 +158,12 @@ func (m Model) renderPreview(width, height int) string {
 	b.WriteString("\n")
 
 	// Content area
+	// Calculate max lines: height - borders(2) - header(1) - padding for safety(1)
+	maxLines := height - 4
+	if maxLines < 1 {
+		maxLines = 1
+	}
+
 	if m.previewContent == "" {
 		b.WriteString(previewEmptyStyle.Render("No preview available"))
 	} else {
@@ -183,11 +189,6 @@ func (m Model) renderPreview(width, height int) string {
 
 		// Split into lines and limit to available height
 		lines := strings.Split(content, "\n")
-		// Reserve space for header (1 line) and box borders (2 lines)
-		maxLines := height - 5
-		if maxLines < 1 {
-			maxLines = 1
-		}
 		if len(lines) > maxLines {
 			lines = lines[len(lines)-maxLines:]
 		}
@@ -195,9 +196,9 @@ func (m Model) renderPreview(width, height int) string {
 		b.WriteString(strings.Join(lines, "\n"))
 	}
 
-	// Apply box style
+	// Apply box style - don't use Height() as it doesn't clip, just pads
 	content := b.String()
-	return previewBoxStyle.Width(width - 2).Height(height - 2).Render(content)
+	return previewBoxStyle.Width(width - 2).Render(content)
 }
 
 // renderSessionList renders the session list portion of the view.
