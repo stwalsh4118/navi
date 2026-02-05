@@ -1,9 +1,8 @@
 {
   "hooks": {
-    "Notification": [
+    "UserPromptSubmit": [
       {
-        "matcher": "",
-        "hooks": [{ "type": "command", "command": "~/.claude-sessions/hooks/notify.sh waiting" }]
+        "hooks": [{ "type": "command", "command": "~/.claude-sessions/hooks/notify.sh working" }]
       }
     ],
     "Stop": [
@@ -16,9 +15,9 @@
         "hooks": [{ "type": "command", "command": "~/.claude-sessions/hooks/notify.sh permission" }]
       }
     ],
-    "SubagentStop": [
+    "SessionEnd": [
       {
-        "hooks": [{ "type": "command", "command": "~/.claude-sessions/hooks/notify.sh working" }]
+        "hooks": [{ "type": "command", "command": "~/.claude-sessions/hooks/notify.sh offline" }]
       }
     ]
   }

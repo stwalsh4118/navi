@@ -39,7 +39,7 @@ SETTINGS_FILE="$CLAUDE_CONFIG_DIR/settings.json"
 NAVI_CONFIG_FILE="$HOOKS_DIR/config.json"
 
 # Hook types that navi uses
-HOOK_TYPES=("Notification" "Stop" "PermissionRequest" "SubagentStop")
+HOOK_TYPES=("UserPromptSubmit" "Stop" "PermissionRequest" "SessionEnd")
 
 # Read hook config from hooks/config.json shipped with navi
 HOOK_CONFIG=$(cat "$SCRIPT_DIR/hooks/config.json")

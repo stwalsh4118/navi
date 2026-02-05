@@ -9,6 +9,7 @@ var (
 	magentaStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("201"))  // permission
 	cyanStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("51"))   // working
 	redStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))  // error
+	grayStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))  // offline
 	dimStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))  // unknown
 )
 
@@ -40,6 +41,7 @@ const (
 	iconPermission = "❓"
 	iconWorking    = "⚙️"
 	iconError      = "❌"
+	iconOffline    = "⏹️"
 	iconUnknown    = "○"
 )
 
@@ -56,6 +58,8 @@ func statusIcon(status string) string {
 		return cyanStyle.Render(iconWorking)
 	case "error":
 		return redStyle.Render(iconError)
+	case "offline":
+		return grayStyle.Render(iconOffline)
 	default:
 		return dimStyle.Render(iconUnknown)
 	}
