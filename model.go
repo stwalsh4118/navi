@@ -198,6 +198,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			filteredSessions := m.getFilteredSessions()
 			if len(filteredSessions) > 0 && m.cursor < len(filteredSessions) {
 				session := filteredSessions[m.cursor]
+				// Skip dismiss for remote sessions (not supported)
+				if session.Remote != "" {
+					return m, nil
+				}
 				_ = dismissSession(session) // Ignore error, poll will update view
 				return m, pollSessions
 			}
@@ -218,10 +222,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "x":
-			// Open kill confirmation dialog
+			// Open kill confirmation dialog (local sessions only)
 			filteredSessions := m.getFilteredSessions()
 			if len(filteredSessions) > 0 && m.cursor < len(filteredSessions) {
 				session := filteredSessions[m.cursor]
+				// Skip kill for remote sessions (not supported)
+				if session.Remote != "" {
+					return m, nil
+				}
 				m.sessionToModify = &session
 				m.dialogMode = DialogKillConfirm
 				m.dialogError = ""
@@ -230,10 +238,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "R":
-			// Open rename dialog
+			// Open rename dialog (local sessions only)
 			filteredSessions := m.getFilteredSessions()
 			if len(filteredSessions) > 0 && m.cursor < len(filteredSessions) {
 				session := filteredSessions[m.cursor]
+				// Skip rename for remote sessions (not supported)
+				if session.Remote != "" {
+					return m, nil
+				}
 				m.sessionToModify = &session
 				m.dialogMode = DialogRename
 				m.dialogError = ""
@@ -332,10 +344,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "G":
-			// Open git detail view for selected session
+			// Open git detail view for selected session (local sessions only)
 			filteredSessions := m.getFilteredSessions()
 			if len(filteredSessions) > 0 && m.cursor < len(filteredSessions) {
 				session := filteredSessions[m.cursor]
+				// Skip git view for remote sessions (not supported)
+				if session.Remote != "" {
+					return m, nil
+				}
 				m.sessionToModify = &session
 				m.dialogMode = DialogGitDetail
 				m.dialogError = ""
@@ -400,11 +416,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		sortSessions(allSessions)
 		m.sessions = allSessions
 
-		// Merge cached git info into sessions
+		// Merge cached git info into local sessions only
+		// (remote sessions with same path shouldn't get local git info)
 		if m.gitCache != nil {
 			for i := range m.sessions {
-				if info, ok := m.gitCache[m.sessions[i].CWD]; ok {
-					m.sessions[i].Git = info
+				if m.sessions[i].Remote == "" {
+					if info, ok := m.gitCache[m.sessions[i].CWD]; ok {
+						m.sessions[i].Git = info
+					}
 				}
 			}
 		}
@@ -456,11 +475,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			sortSessions(allSessions)
 			m.sessions = allSessions
 
-			// Merge git info into remote sessions if we have cached info
+			// Merge git info into local sessions only
+			// (remote sessions with same path shouldn't get local git info)
 			if m.gitCache != nil {
 				for i := range m.sessions {
-					if info, ok := m.gitCache[m.sessions[i].CWD]; ok {
-						m.sessions[i].Git = info
+					if m.sessions[i].Remote == "" {
+						if info, ok := m.gitCache[m.sessions[i].CWD]; ok {
+							m.sessions[i].Git = info
+						}
 					}
 				}
 			}
@@ -586,10 +608,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for cwd, info := range msg.cache {
 			m.gitCache[cwd] = info
 		}
-		// Update sessions with cached git info
+		// Update local sessions with cached git info
+		// (remote sessions with same path shouldn't get local git info)
 		for i := range m.sessions {
-			if info, ok := m.gitCache[m.sessions[i].CWD]; ok {
-				m.sessions[i].Git = info
+			if m.sessions[i].Remote == "" {
+				if info, ok := m.gitCache[m.sessions[i].CWD]; ok {
+					m.sessions[i].Git = info
+				}
 			}
 		}
 		return m, nil
