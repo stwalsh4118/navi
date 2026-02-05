@@ -19,8 +19,18 @@ type SessionInfo struct {
 	Message     string   `json:"message"`
 	CWD         string   `json:"cwd"`
 	Timestamp   int64    `json:"timestamp"`
-	Git         *GitInfo `json:"git,omitempty"` // Git repository info (nil if not a git repo)
+	Git         *GitInfo `json:"git,omitempty"`    // Git repository info (nil if not a git repo)
+	Remote      string   `json:"remote,omitempty"` // Remote name (empty for local sessions)
 }
+
+// FilterMode represents the session filter state.
+type FilterMode int
+
+const (
+	FilterAll    FilterMode = iota // Show all sessions
+	FilterLocal                    // Show only local sessions
+	FilterRemote                   // Show only remote sessions
+)
 
 // Model is the Bubble Tea application state for navi.
 type Model struct {
@@ -55,6 +65,11 @@ type Model struct {
 
 	// Git info cache
 	gitCache map[string]*GitInfo // Cache of git info by session working directory
+
+	// Remote session support
+	remotes    []RemoteConfig // Configured remote machines
+	sshPool    *SSHPool       // SSH connection pool for remotes
+	filterMode FilterMode     // Current session filter mode
 }
 
 // Message types for Bubble Tea communication.
@@ -126,12 +141,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Main keybindings (only when no dialog is open)
 		switch msg.String() {
 		case "up", "k":
-			if len(m.sessions) > 0 {
+			filteredSessions := m.getFilteredSessions()
+			if len(filteredSessions) > 0 {
 				oldCursor := m.cursor
 				if m.cursor > 0 {
 					m.cursor--
 				} else {
-					m.cursor = len(m.sessions) - 1 // wrap to bottom
+					m.cursor = len(filteredSessions) - 1 // wrap to bottom
 				}
 				// Trigger debounced preview capture if cursor changed and preview visible
 				if m.previewVisible && m.cursor != oldCursor {
@@ -142,9 +158,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "down", "j":
-			if len(m.sessions) > 0 {
+			filteredSessions := m.getFilteredSessions()
+			if len(filteredSessions) > 0 {
 				oldCursor := m.cursor
-				if m.cursor < len(m.sessions)-1 {
+				if m.cursor < len(filteredSessions)-1 {
 					m.cursor++
 				} else {
 					m.cursor = 0 // wrap to top
@@ -158,16 +175,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "enter":
-			if len(m.sessions) > 0 && m.cursor < len(m.sessions) {
-				session := m.sessions[m.cursor]
+			filteredSessions := m.getFilteredSessions()
+			if len(filteredSessions) > 0 && m.cursor < len(filteredSessions) {
+				session := filteredSessions[m.cursor]
 				m.lastSelectedSession = session.TmuxSession
+
+				// Check if this is a remote session
+				if session.Remote != "" && m.sshPool != nil {
+					// Get the remote config for this session
+					remote := m.sshPool.GetRemoteConfig(session.Remote)
+					if remote != nil {
+						return m, attachRemoteSession(remote, session.TmuxSession)
+					}
+					// Fallback to local attach if remote config not found
+				}
+
 				return m, attachSession(session.TmuxSession)
 			}
 			return m, nil
 
 		case "d":
-			if len(m.sessions) > 0 && m.cursor < len(m.sessions) {
-				session := m.sessions[m.cursor]
+			filteredSessions := m.getFilteredSessions()
+			if len(filteredSessions) > 0 && m.cursor < len(filteredSessions) {
+				session := filteredSessions[m.cursor]
 				_ = dismissSession(session) // Ignore error, poll will update view
 				return m, pollSessions
 			}
@@ -189,8 +219,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "x":
 			// Open kill confirmation dialog
-			if len(m.sessions) > 0 && m.cursor < len(m.sessions) {
-				session := m.sessions[m.cursor]
+			filteredSessions := m.getFilteredSessions()
+			if len(filteredSessions) > 0 && m.cursor < len(filteredSessions) {
+				session := filteredSessions[m.cursor]
 				m.sessionToModify = &session
 				m.dialogMode = DialogKillConfirm
 				m.dialogError = ""
@@ -200,8 +231,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "R":
 			// Open rename dialog
-			if len(m.sessions) > 0 && m.cursor < len(m.sessions) {
-				session := m.sessions[m.cursor]
+			filteredSessions := m.getFilteredSessions()
+			if len(filteredSessions) > 0 && m.cursor < len(filteredSessions) {
+				session := filteredSessions[m.cursor]
 				m.sessionToModify = &session
 				m.dialogMode = DialogRename
 				m.dialogError = ""
@@ -216,14 +248,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Toggle preview pane visibility
 			m.previewVisible = !m.previewVisible
 			m.previewUserEnabled = m.previewVisible
-			if m.previewVisible && len(m.sessions) > 0 && m.cursor < len(m.sessions) {
+			filteredSessions := m.getFilteredSessions()
+			if m.previewVisible && len(filteredSessions) > 0 && m.cursor < len(filteredSessions) {
 				// Set defaults when showing preview
 				m.previewWrap = true
 				m.previewLayout = PreviewLayoutBottom // Default to bottom layout
 				// Trigger immediate capture and start polling when showing
 				m.previewLastCursor = m.cursor
 				return m, tea.Batch(
-					capturePreviewCmd(m.sessions[m.cursor].TmuxSession),
+					capturePreviewCmd(filteredSessions[m.cursor].TmuxSession),
 					previewTickCmd(),
 				)
 			}
@@ -300,8 +333,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "G":
 			// Open git detail view for selected session
-			if len(m.sessions) > 0 && m.cursor < len(m.sessions) {
-				session := m.sessions[m.cursor]
+			filteredSessions := m.getFilteredSessions()
+			if len(filteredSessions) > 0 && m.cursor < len(filteredSessions) {
+				session := filteredSessions[m.cursor]
 				m.sessionToModify = &session
 				m.dialogMode = DialogGitDetail
 				m.dialogError = ""
@@ -313,13 +347,43 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
+		case "f":
+			// Cycle filter mode: All -> Local -> Remote -> All
+			if len(m.remotes) > 0 {
+				switch m.filterMode {
+				case FilterAll:
+					m.filterMode = FilterLocal
+				case FilterLocal:
+					m.filterMode = FilterRemote
+				case FilterRemote:
+					m.filterMode = FilterAll
+				}
+				// Adjust cursor for new filtered list
+				filteredSessions := m.getFilteredSessions()
+				if m.cursor >= len(filteredSessions) {
+					if len(filteredSessions) > 0 {
+						m.cursor = len(filteredSessions) - 1
+					} else {
+						m.cursor = 0
+					}
+				}
+			}
+			return m, nil
+
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		}
 
 	case tickMsg:
 		// On tick, poll sessions and schedule next tick
-		return m, tea.Batch(pollSessions, tickCmd())
+		// Also poll remote sessions if configured
+		cmds := []tea.Cmd{pollSessions, tickCmd()}
+		if m.sshPool != nil && len(m.remotes) > 0 {
+			cmds = append(cmds, func() tea.Msg {
+				return remoteSessionsMsg{sessions: pollRemoteSessions(m.sshPool, m.remotes)}
+			})
+		}
+		return m, tea.Batch(cmds...)
 
 	case sessionsMsg:
 		// Update sessions list
@@ -339,8 +403,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		needsGitPoll := len(m.gitCache) == 0 && len(m.sessions) > 0
 
 		// Try to restore cursor to last selected session if set
+		filteredSessions := m.getFilteredSessions()
 		if m.lastSelectedSession != "" {
-			for i, s := range m.sessions {
+			for i, s := range filteredSessions {
 				if s.TmuxSession == m.lastSelectedSession {
 					m.cursor = i
 					m.lastSelectedSession = "" // Clear after restoring
@@ -353,15 +418,47 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.lastSelectedSession = "" // Session no longer exists, clear it
 		}
 
-		// Clamp cursor if sessions list shrunk
-		if m.cursor >= len(m.sessions) && len(m.sessions) > 0 {
-			m.cursor = len(m.sessions) - 1
-		} else if len(m.sessions) == 0 {
+		// Clamp cursor if filtered sessions list shrunk
+		if m.cursor >= len(filteredSessions) && len(filteredSessions) > 0 {
+			m.cursor = len(filteredSessions) - 1
+		} else if len(filteredSessions) == 0 {
 			m.cursor = 0
 		}
 
 		if needsGitPoll {
 			return m, pollGitInfoCmd(m.sessions)
+		}
+
+	case remoteSessionsMsg:
+		// Merge remote sessions with existing local sessions
+		if len(msg.sessions) > 0 {
+			// Keep local sessions (Remote == ""), add remote sessions
+			var localSessions []SessionInfo
+			for _, s := range m.sessions {
+				if s.Remote == "" {
+					localSessions = append(localSessions, s)
+				}
+			}
+			// Add remote sessions
+			allSessions := append(localSessions, msg.sessions...)
+			// Re-sort the combined list
+			sortSessions(allSessions)
+			m.sessions = allSessions
+
+			// Merge git info into remote sessions if we have cached info
+			if m.gitCache != nil {
+				for i := range m.sessions {
+					if info, ok := m.gitCache[m.sessions[i].CWD]; ok {
+						m.sessions[i].Git = info
+					}
+				}
+			}
+
+			// Clamp cursor for filtered sessions
+			filteredSessions := m.getFilteredSessions()
+			if m.cursor >= len(filteredSessions) && len(filteredSessions) > 0 {
+				m.cursor = len(filteredSessions) - 1
+			}
 		}
 
 	case tea.WindowSizeMsg:
@@ -376,9 +473,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Restore preview if user had it enabled and space now available
 			m.previewVisible = true
 			// Trigger capture if we have sessions
-			if len(m.sessions) > 0 && m.cursor < len(m.sessions) {
+			filteredSessions := m.getFilteredSessions()
+			if len(filteredSessions) > 0 && m.cursor < len(filteredSessions) {
 				return m, tea.Batch(
-					capturePreviewCmd(m.sessions[m.cursor].TmuxSession),
+					capturePreviewCmd(filteredSessions[m.cursor].TmuxSession),
 					previewTickCmd(),
 				)
 			}
@@ -434,14 +532,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case previewTickMsg:
 		// Periodic preview refresh
-		if !m.previewVisible || len(m.sessions) == 0 {
+		filteredSessions := m.getFilteredSessions()
+		if !m.previewVisible || len(filteredSessions) == 0 {
 			// Don't continue polling if preview hidden or no sessions
 			return m, nil
 		}
 		// Capture current session and schedule next tick
-		if m.cursor < len(m.sessions) {
+		if m.cursor < len(filteredSessions) {
 			return m, tea.Batch(
-				capturePreviewCmd(m.sessions[m.cursor].TmuxSession),
+				capturePreviewCmd(filteredSessions[m.cursor].TmuxSession),
 				previewTickCmd(),
 			)
 		}
@@ -449,11 +548,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case previewDebounceMsg:
 		// Debounced capture after cursor movement
-		if !m.previewVisible || len(m.sessions) == 0 {
+		filteredSessions := m.getFilteredSessions()
+		if !m.previewVisible || len(filteredSessions) == 0 {
 			return m, nil
 		}
-		if m.cursor < len(m.sessions) {
-			return m, capturePreviewCmd(m.sessions[m.cursor].TmuxSession)
+		if m.cursor < len(filteredSessions) {
+			return m, capturePreviewCmd(filteredSessions[m.cursor].TmuxSession)
 		}
 		return m, nil
 
@@ -591,10 +691,21 @@ func (m Model) getPreviewHeight() int {
 	return contentHeight * previewDefaultHeightPercent / 100
 }
 
-// attachSession returns a command that attaches to a tmux session.
+// attachSession returns a command that attaches to a local tmux session.
 // Uses tea.ExecProcess to hand off terminal control to tmux.
 func attachSession(name string) tea.Cmd {
 	c := exec.Command("tmux", "attach-session", "-t", name)
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		return attachDoneMsg{}
+	})
+}
+
+// attachRemoteSession returns a command that attaches to a remote tmux session via SSH.
+// Uses tea.ExecProcess to hand off terminal control to SSH with tmux.
+func attachRemoteSession(remote *RemoteConfig, sessionName string) tea.Cmd {
+	args := buildSSHAttachCommand(remote, sessionName)
+	// First arg is "ssh", rest are arguments
+	c := exec.Command(args[0], args[1:]...)
 	return tea.ExecProcess(c, func(err error) tea.Msg {
 		return attachDoneMsg{}
 	})
@@ -635,7 +746,7 @@ func (m Model) updateDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.nameInput.Focus()
 			case focusDir:
 				m.dirInput.Focus()
-			// focusSkipPerms - no text input to focus
+				// focusSkipPerms - no text input to focus
 			}
 			return m, nil
 		}
@@ -817,4 +928,38 @@ func (m Model) openGitLink() (tea.Model, tea.Cmd) {
 func (m *Model) closeDialog() {
 	m.dialogMode = DialogNone
 	m.dialogError = ""
+}
+
+// getFilteredSessions returns sessions filtered by the current filter mode.
+func (m Model) getFilteredSessions() []SessionInfo {
+	if m.filterMode == FilterAll {
+		return m.sessions
+	}
+
+	var filtered []SessionInfo
+	for _, s := range m.sessions {
+		switch m.filterMode {
+		case FilterLocal:
+			if s.Remote == "" {
+				filtered = append(filtered, s)
+			}
+		case FilterRemote:
+			if s.Remote != "" {
+				filtered = append(filtered, s)
+			}
+		}
+	}
+	return filtered
+}
+
+// filterModeString returns a display string for the current filter mode.
+func (m Model) filterModeString() string {
+	switch m.filterMode {
+	case FilterLocal:
+		return "local"
+	case FilterRemote:
+		return "remote"
+	default:
+		return "all"
+	}
 }
