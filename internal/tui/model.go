@@ -14,6 +14,7 @@ import (
 	"github.com/stwalsh4118/navi/internal/pathutil"
 	"github.com/stwalsh4118/navi/internal/remote"
 	"github.com/stwalsh4118/navi/internal/session"
+	"github.com/stwalsh4118/navi/internal/task"
 )
 
 // Model is the Bubble Tea application state for navi.
@@ -62,6 +63,25 @@ type Model struct {
 	statusFilter string          // Active status filter (empty = show all)
 	hideOffline  bool            // Whether to hide offline/done sessions (default false = show all)
 	sortMode     SortMode        // Active sort mode
+
+	// Task panel state
+	taskPanelVisible    bool                            // Whether task panel is shown below session list
+	taskPanelUserEnabled bool                           // User's intended state (for restore after terminal resize)
+	taskPanelFocused    bool                            // Whether keyboard focus is inside the task panel
+	taskPanelHeight     int                             // Height of task panel in rows
+	taskCursor          int                             // Cursor position in flat task item list
+	taskExpandedGroups  map[string]bool                 // Which groups are expanded (collapsed by default)
+	taskSearchMode      bool                            // Whether task search input is active
+	taskSearchQuery     string                          // Current task search text
+	taskSearchInput     textinput.Model                 // Text input for task search
+	taskGroups          []task.TaskGroup                // Displayed task groups (for focused project)
+	taskGroupsByProject map[string][]task.TaskGroup     // All task groups keyed by project dir
+	taskFocusedProject  string                          // Project dir whose tasks are displayed
+	taskErrors          map[string]error                // Provider errors keyed by project dir
+	taskProjectConfigs  []task.ProjectConfig            // Discovered project configs
+	taskCache           *task.ResultCache               // Cache for provider results
+	taskGlobalConfig    *task.GlobalConfig              // Global task config
+	taskLastCWDs        []string                        // Last seen session CWDs (for change detection)
 }
 
 // Message types for Bubble Tea communication.
@@ -135,7 +155,17 @@ func (m Model) Init() tea.Cmd {
 	if m.gitCache == nil {
 		m.gitCache = make(map[string]*git.Info)
 	}
-	return tea.Batch(tickCmd(), pollSessions, gitTickCmd())
+
+	cmds := []tea.Cmd{tickCmd(), pollSessions, gitTickCmd()}
+
+	// Start task refresh tick
+	interval := taskDefaultRefreshInterval
+	if m.taskGlobalConfig != nil && m.taskGlobalConfig.Tasks.Interval.Duration > 0 {
+		interval = m.taskGlobalConfig.Tasks.Interval.Duration
+	}
+	cmds = append(cmds, taskTickCmd(interval))
+
+	return tea.Batch(cmds...)
 }
 
 // Update implements tea.Model.
@@ -145,6 +175,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle dialog mode first - block main keybindings when dialog is open
 		if m.dialogMode != DialogNone {
 			return m.updateDialog(msg)
+		}
+
+		// Handle task panel focus mode - route to task panel keybindings
+		if m.taskPanelFocused {
+			return m.updateTaskPanelFocus(msg)
 		}
 
 		// Handle search mode - forward most keys to search input
@@ -163,10 +198,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else {
 					m.cursor = len(filteredSessions) - 1 // wrap to bottom
 				}
-				// Trigger debounced preview capture if cursor changed and preview visible
-				if m.previewVisible && m.cursor != oldCursor {
-					m.previewLastCursor = m.cursor
-					return m, previewDebounceCmd()
+				if m.cursor != oldCursor {
+					// Trigger debounced preview capture if preview visible
+					if m.previewVisible {
+						m.previewLastCursor = m.cursor
+						return m, previewDebounceCmd()
+					}
+					// Update task panel if visible
+					if m.taskPanelVisible {
+						m.updateTaskPanelForCursor()
+					}
 				}
 			}
 			return m, nil
@@ -180,10 +221,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else {
 					m.cursor = 0 // wrap to top
 				}
-				// Trigger debounced preview capture if cursor changed and preview visible
-				if m.previewVisible && m.cursor != oldCursor {
-					m.previewLastCursor = m.cursor
-					return m, previewDebounceCmd()
+				if m.cursor != oldCursor {
+					// Trigger debounced preview capture if preview visible
+					if m.previewVisible {
+						m.previewLastCursor = m.cursor
+						return m, previewDebounceCmd()
+					}
+					// Update task panel if visible
+					if m.taskPanelVisible {
+						m.updateTaskPanelForCursor()
+					}
 				}
 			}
 			return m, nil
@@ -262,31 +309,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
-		case "p", "tab":
-			// Toggle preview pane visibility
-			m.previewVisible = !m.previewVisible
-			m.previewUserEnabled = m.previewVisible
-			filteredSessions := m.getFilteredSessions()
-			if m.previewVisible && len(filteredSessions) > 0 && m.cursor < len(filteredSessions) {
-				// Set defaults when showing preview
-				m.previewWrap = true
-				m.previewLayout = PreviewLayoutBottom // Default to bottom layout
-				// Trigger immediate capture and start polling when showing
-				m.previewLastCursor = m.cursor
-				return m, tea.Batch(
-					m.capturePreviewForSession(filteredSessions[m.cursor]),
-					previewTickCmd(),
-				)
+		case "tab":
+			// Tab enters task panel focus when task panel is visible
+			if m.taskPanelVisible {
+				m.taskPanelFocused = true
+				m.taskCursor = 0
+				return m, nil
 			}
-			// Clear content when hiding
-			m.previewContent = ""
-			return m, nil
+			// Otherwise toggle preview (same as p)
+			return m.togglePreview()
+
+		case "p":
+			// Toggle preview pane visibility (mutually exclusive with task panel)
+			return m.togglePreview()
 
 		case "[":
-			// Shrink preview pane
-			if m.previewVisible {
+			// Shrink active panel
+			if m.taskPanelVisible {
+				currentHeight := m.getTaskPanelHeight()
+				newHeight := currentHeight - previewResizeStep
+				if newHeight < previewMinHeight {
+					newHeight = previewMinHeight
+				}
+				m.taskPanelHeight = newHeight
+			} else if m.previewVisible {
 				if m.previewLayout == PreviewLayoutBottom {
-					// Shrink height in bottom layout
 					currentHeight := m.getPreviewHeight()
 					newHeight := currentHeight - previewResizeStep
 					if newHeight < previewMinHeight {
@@ -294,7 +341,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					m.previewHeight = newHeight
 				} else {
-					// Shrink width in side layout
 					currentWidth := m.getPreviewWidth()
 					newWidth := currentWidth - previewResizeStep
 					if newWidth < previewMinWidth {
@@ -306,11 +352,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "]":
-			// Expand preview pane
-			if m.previewVisible {
+			// Expand active panel
+			if m.taskPanelVisible {
+				contentHeight := m.height - 8
+				maxHeight := contentHeight - sessionListMinHeight
+				currentHeight := m.getTaskPanelHeight()
+				newHeight := currentHeight + previewResizeStep
+				if newHeight > maxHeight {
+					newHeight = maxHeight
+				}
+				m.taskPanelHeight = newHeight
+			} else if m.previewVisible {
 				if m.previewLayout == PreviewLayoutBottom {
-					// Expand height in bottom layout
-					contentHeight := m.height - 8 // Same calculation as View()
+					contentHeight := m.height - 8
 					maxHeight := contentHeight - sessionListMinHeight
 					currentHeight := m.getPreviewHeight()
 					newHeight := currentHeight + previewResizeStep
@@ -319,9 +373,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					m.previewHeight = newHeight
 				} else {
-					// Expand width in side layout
 					currentWidth := m.getPreviewWidth()
-					maxWidth := m.width - sessionListMinWidth - 1 // -1 for gap
+					maxWidth := m.width - sessionListMinWidth - 1
 					newWidth := currentWidth + previewResizeStep
 					if newWidth > maxWidth {
 						newWidth = maxWidth
@@ -451,9 +504,65 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
+		case "T":
+			// Toggle task panel (mutually exclusive with preview)
+			m.taskPanelVisible = !m.taskPanelVisible
+			m.taskPanelUserEnabled = m.taskPanelVisible
+			if m.taskPanelVisible {
+				// Close preview when opening task panel
+				m.previewVisible = false
+				m.previewUserEnabled = false
+				m.previewContent = ""
+
+				// Update displayed tasks for current cursor position
+				m.updateTaskPanelForCursor()
+
+				// If we have a config for this project but no data yet, trigger a refresh
+				if len(m.taskGroups) == 0 && m.taskFocusedProject != "" {
+					return m, taskRefreshCmd(m.taskProjectConfigs, m.taskCache, m.taskGlobalConfig, task.DefaultProviderTimeout)
+				}
+			} else {
+				// Clear focus and search when hiding
+				m.taskPanelFocused = false
+				m.taskSearchMode = false
+				m.taskSearchQuery = ""
+			}
+			return m, nil
+
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		}
+
+	case taskTickMsg:
+		// Periodic task refresh
+		interval := taskDefaultRefreshInterval
+		if m.taskGlobalConfig != nil && m.taskGlobalConfig.Tasks.Interval.Duration > 0 {
+			interval = m.taskGlobalConfig.Tasks.Interval.Duration
+		}
+		if len(m.taskProjectConfigs) > 0 {
+			return m, tea.Batch(
+				taskRefreshCmd(m.taskProjectConfigs, m.taskCache, m.taskGlobalConfig, task.DefaultProviderTimeout),
+				taskTickCmd(interval),
+			)
+		}
+		return m, taskTickCmd(interval)
+
+	case tasksMsg:
+		m.taskGroupsByProject = msg.groupsByProject
+		m.taskErrors = msg.errors
+		// Update displayed groups if task panel is visible
+		if m.taskPanelVisible {
+			m.updateTaskPanelForCursor()
+		}
+		return m, nil
+
+	case taskConfigsMsg:
+		m.taskProjectConfigs = msg.configs
+		// Trigger task refresh if we have new configs
+		if len(msg.configs) > 0 {
+			return m, taskRefreshCmd(msg.configs, m.taskCache, m.taskGlobalConfig, task.DefaultProviderTimeout)
+		}
+		return m, nil
 
 	case tickMsg:
 		// On tick, poll sessions and schedule next tick
@@ -494,6 +603,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// This makes git info appear quickly on startup instead of waiting for gitPollInterval
 		needsGitPoll := len(m.gitCache) == 0 && len(m.sessions) > 0
 
+		// Extract CWDs for task config discovery
+		var currentCWDs []sessionCWD
+		for _, s := range m.sessions {
+			if s.CWD != "" {
+				currentCWDs = append(currentCWDs, sessionCWD{cwd: s.CWD})
+			}
+		}
+		cwdStrings := extractSessionCWDs(currentCWDs)
+		cwdsChanged := !stringSlicesEqual(cwdStrings, m.taskLastCWDs)
+		if cwdsChanged {
+			m.taskLastCWDs = cwdStrings
+		}
+
+		var cmds []tea.Cmd
+
 		// Try to restore cursor to last selected session if set
 		filteredSessions := m.getFilteredSessions()
 		if m.lastSelectedSession != "" {
@@ -501,13 +625,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if s.TmuxSession == m.lastSelectedSession {
 					m.cursor = i
 					m.lastSelectedSession = "" // Clear after restoring
-					if needsGitPoll {
-						return m, m.pollAllGitInfoCmd()
-					}
-					return m, nil
+					break
 				}
 			}
-			m.lastSelectedSession = "" // Session no longer exists, clear it
+			if m.lastSelectedSession != "" {
+				m.lastSelectedSession = "" // Session no longer exists, clear it
+			}
 		}
 
 		// Clamp cursor if filtered sessions list shrunk
@@ -518,7 +641,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if needsGitPoll {
-			return m, m.pollAllGitInfoCmd()
+			cmds = append(cmds, m.pollAllGitInfoCmd())
+		}
+
+		// Trigger task config discovery if CWDs changed
+		if cwdsChanged && len(currentCWDs) > 0 {
+			cmds = append(cmds, discoverTaskConfigsCmd(currentCWDs, m.taskGlobalConfig))
+		}
+
+		if len(cmds) > 0 {
+			return m, tea.Batch(cmds...)
 		}
 
 	case remoteSessionsMsg:
@@ -567,8 +699,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Handle preview visibility based on terminal width
 		if m.width < previewMinTerminalWidth {
-			// Auto-hide preview when terminal too narrow
+			// Auto-hide panels when terminal too narrow
 			m.previewVisible = false
+			m.taskPanelVisible = false
 		} else if m.previewUserEnabled && !m.previewVisible {
 			// Restore preview if user had it enabled and space now available
 			m.previewVisible = true
@@ -580,6 +713,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					previewTickCmd(),
 				)
 			}
+		} else if m.taskPanelUserEnabled && !m.taskPanelVisible {
+			// Restore task panel if user had it enabled and space now available
+			m.taskPanelVisible = true
+			m.updateTaskPanelForCursor()
 		}
 
 	case attachDoneMsg:
@@ -750,6 +887,291 @@ func (m Model) getPreviewWidth() int {
 	}
 	// Default to percentage of terminal width
 	return m.width * previewDefaultWidthPercent / 100
+}
+
+// updateTaskPanelForCursor updates the task panel's focused project and displayed groups
+// based on the currently selected session.
+func (m *Model) updateTaskPanelForCursor() {
+	filteredSessions := m.getFilteredSessions()
+	if m.cursor < len(filteredSessions) {
+		m.taskFocusedProject = findProjectForCWD(filteredSessions[m.cursor].CWD, m.taskProjectConfigs)
+	} else {
+		m.taskFocusedProject = ""
+	}
+
+	if m.taskFocusedProject != "" {
+		m.taskGroups = m.taskGroupsByProject[m.taskFocusedProject]
+	} else {
+		m.taskGroups = nil
+	}
+}
+
+// getTaskPanelHeight returns the height to use for the task panel.
+func (m Model) getTaskPanelHeight() int {
+	if m.taskPanelHeight > 0 {
+		return m.taskPanelHeight
+	}
+	// Default to percentage of available content height
+	contentHeight := m.height - 8
+	return contentHeight * previewDefaultHeightPercent / 100
+}
+
+// togglePreview toggles the preview pane, closing the task panel if needed.
+func (m Model) togglePreview() (tea.Model, tea.Cmd) {
+	m.previewVisible = !m.previewVisible
+	m.previewUserEnabled = m.previewVisible
+	if m.previewVisible {
+		// Close task panel when opening preview
+		m.taskPanelVisible = false
+		m.taskPanelUserEnabled = false
+		m.taskPanelFocused = false
+		m.taskSearchMode = false
+		m.taskSearchQuery = ""
+	}
+	filteredSessions := m.getFilteredSessions()
+	if m.previewVisible && len(filteredSessions) > 0 && m.cursor < len(filteredSessions) {
+		m.previewWrap = true
+		m.previewLayout = PreviewLayoutBottom
+		m.previewLastCursor = m.cursor
+		return m, tea.Batch(
+			m.capturePreviewForSession(filteredSessions[m.cursor]),
+			previewTickCmd(),
+		)
+	}
+	m.previewContent = ""
+	return m, nil
+}
+
+// updateTaskPanelFocus handles key messages when the task panel has focus.
+func (m Model) updateTaskPanelFocus(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Route to task search mode if active
+	if m.taskSearchMode {
+		return m.updateTaskSearchMode(msg)
+	}
+
+	switch msg.String() {
+	case "tab", "esc":
+		// Return focus to session list
+		m.taskPanelFocused = false
+		return m, nil
+
+	case "T":
+		// Close task panel entirely
+		m.taskPanelVisible = false
+		m.taskPanelUserEnabled = false
+		m.taskPanelFocused = false
+		return m, nil
+
+	case "up", "k":
+		m.moveTaskCursor(-1)
+		return m, nil
+
+	case "down", "j":
+		m.moveTaskCursor(1)
+		return m, nil
+
+	case " ":
+		// Toggle group expansion
+		item := m.getSelectedTaskItem()
+		if item != nil && item.isGroup {
+			if m.taskExpandedGroups[item.groupID] {
+				delete(m.taskExpandedGroups, item.groupID)
+			} else {
+				m.taskExpandedGroups[item.groupID] = true
+			}
+			// Clamp cursor after expansion change
+			items := m.getVisibleTaskItems()
+			if m.taskCursor >= len(items) && len(items) > 0 {
+				m.taskCursor = len(items) - 1
+			}
+		}
+		return m, nil
+
+	case "/":
+		// Enter task search mode
+		m.taskSearchMode = true
+		m.taskSearchInput.SetValue("")
+		m.taskSearchQuery = ""
+		m.taskSearchInput.Focus()
+		return m, nil
+
+	case "q", "ctrl+c":
+		return m, tea.Quit
+	}
+
+	return m, nil
+}
+
+// updateTaskSearchMode handles key messages when task search is active within the focused panel.
+func (m Model) updateTaskSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		// Clear search and exit search mode (stay in focus mode)
+		m.taskSearchMode = false
+		m.taskSearchQuery = ""
+		m.taskSearchInput.SetValue("")
+		m.taskSearchInput.Blur()
+		m.taskCursor = 0
+		return m, nil
+
+	case "up", "k":
+		m.moveTaskCursor(-1)
+		return m, nil
+
+	case "down", "j":
+		m.moveTaskCursor(1)
+		return m, nil
+
+	case "enter":
+		// Accept search and return to normal focus navigation
+		m.taskSearchMode = false
+		m.taskSearchInput.Blur()
+		return m, nil
+
+	case " ":
+		// Toggle group expansion even during search
+		item := m.getSelectedTaskItem()
+		if item != nil && item.isGroup {
+			if m.taskExpandedGroups[item.groupID] {
+				delete(m.taskExpandedGroups, item.groupID)
+			} else {
+				m.taskExpandedGroups[item.groupID] = true
+			}
+			items := m.getVisibleTaskItems()
+			if m.taskCursor >= len(items) && len(items) > 0 {
+				m.taskCursor = len(items) - 1
+			}
+		}
+		return m, nil
+	}
+
+	// Forward all other keys to search input
+	var cmd tea.Cmd
+	m.taskSearchInput, cmd = m.taskSearchInput.Update(msg)
+	m.taskSearchQuery = m.taskSearchInput.Value()
+
+	// Clamp cursor after query change
+	items := m.getVisibleTaskItems()
+	if m.taskCursor >= len(items) {
+		if len(items) > 0 {
+			m.taskCursor = len(items) - 1
+		} else {
+			m.taskCursor = 0
+		}
+	}
+
+	return m, cmd
+}
+
+// taskItem represents a navigable item in the task panel (group header or task).
+type taskItem struct {
+	isGroup bool
+	groupID string
+	title   string
+	status  string
+	taskID  string
+}
+
+// getVisibleTaskItems returns the flat list of navigable items based on expand state.
+// When a task search query is active, filters groups/tasks by fuzzy match and
+// auto-expands groups that contain matching tasks.
+func (m Model) getVisibleTaskItems() []taskItem {
+	var items []taskItem
+
+	if m.taskSearchQuery != "" {
+		// Search mode: filter and auto-expand matching groups
+		for _, g := range m.taskGroups {
+			groupMatches, _ := fuzzyMatch(m.taskSearchQuery, g.Title)
+
+			// Find matching tasks in this group
+			var matchingTasks []taskItem
+			for _, t := range g.Tasks {
+				titleMatch, _ := fuzzyMatch(m.taskSearchQuery, t.Title)
+				idMatch, _ := fuzzyMatch(m.taskSearchQuery, t.ID)
+				if titleMatch || idMatch {
+					matchingTasks = append(matchingTasks, taskItem{
+						isGroup: false,
+						groupID: g.ID,
+						taskID:  t.ID,
+						title:   t.Title,
+						status:  t.Status,
+					})
+				}
+			}
+
+			// Show group if it matches or has matching tasks
+			if groupMatches || len(matchingTasks) > 0 {
+				items = append(items, taskItem{
+					isGroup: true,
+					groupID: g.ID,
+					title:   g.Title,
+					status:  g.Status,
+				})
+				// Auto-expand: show matching tasks (or all tasks if group title matched)
+				if groupMatches && len(matchingTasks) == 0 {
+					// Group title matched but no individual tasks - show all tasks
+					for _, t := range g.Tasks {
+						items = append(items, taskItem{
+							isGroup: false,
+							groupID: g.ID,
+							taskID:  t.ID,
+							title:   t.Title,
+							status:  t.Status,
+						})
+					}
+				} else {
+					items = append(items, matchingTasks...)
+				}
+			}
+		}
+		return items
+	}
+
+	// Normal mode: respect expand/collapse state
+	for _, g := range m.taskGroups {
+		items = append(items, taskItem{
+			isGroup: true,
+			groupID: g.ID,
+			title:   g.Title,
+			status:  g.Status,
+		})
+		if m.taskExpandedGroups[g.ID] {
+			for _, t := range g.Tasks {
+				items = append(items, taskItem{
+					isGroup: false,
+					groupID: g.ID,
+					taskID:  t.ID,
+					title:   t.Title,
+					status:  t.Status,
+				})
+			}
+		}
+	}
+	return items
+}
+
+// getSelectedTaskItem returns the currently selected task item, or nil.
+func (m Model) getSelectedTaskItem() *taskItem {
+	items := m.getVisibleTaskItems()
+	if m.taskCursor >= 0 && m.taskCursor < len(items) {
+		return &items[m.taskCursor]
+	}
+	return nil
+}
+
+// moveTaskCursor moves the task cursor by delta, wrapping at bounds.
+func (m *Model) moveTaskCursor(delta int) {
+	items := m.getVisibleTaskItems()
+	if len(items) == 0 {
+		m.taskCursor = 0
+		return
+	}
+	m.taskCursor += delta
+	if m.taskCursor < 0 {
+		m.taskCursor = len(items) - 1
+	} else if m.taskCursor >= len(items) {
+		m.taskCursor = 0
+	}
 }
 
 // getPreviewHeight returns the height to use for the preview pane (bottom layout).
@@ -1184,14 +1606,43 @@ func InitialModel() Model {
 		sshPool = remote.NewSSHPool(remotes)
 	}
 
-	return Model{
-		sessions:    []session.Info{},
-		cursor:      0,
-		width:       80,
-		height:      24,
-		Remotes:     remotes,
-		SSHPool:     sshPool,
-		sortMode:    SortPriority,
-		searchInput: initSearchInput(),
+	// Load global task config (errors are logged but not fatal)
+	globalTaskConfig, err := task.LoadGlobalConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to load task config: %v\n", err)
+		globalTaskConfig = &task.GlobalConfig{}
 	}
+
+	return Model{
+		sessions:            []session.Info{},
+		cursor:              0,
+		width:               80,
+		height:              24,
+		Remotes:             remotes,
+		SSHPool:             sshPool,
+		sortMode:            SortPriority,
+		searchInput:         initSearchInput(),
+		taskSearchInput:     initTaskSearchInput(),
+		taskExpandedGroups:  make(map[string]bool),
+		taskGroupsByProject: make(map[string][]task.TaskGroup),
+		taskCache:           task.NewResultCache(),
+		taskGlobalConfig:    globalTaskConfig,
+	}
+}
+
+// stringSlicesEqual returns true if two string slices have the same elements (order-independent).
+func stringSlicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	setA := make(map[string]bool, len(a))
+	for _, s := range a {
+		setA[s] = true
+	}
+	for _, s := range b {
+		if !setA[s] {
+			return false
+		}
+	}
+	return true
 }

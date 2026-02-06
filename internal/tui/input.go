@@ -35,6 +35,17 @@ var (
 	errInvalidDir   = errors.New("directory does not exist")
 )
 
+// initTaskSearchInput creates and configures a text input for task search.
+func initTaskSearchInput() textinput.Model {
+	ti := textinput.New()
+	ti.Placeholder = "Search tasks..."
+	ti.CharLimit = inputSearchCharLimit
+	ti.Width = inputWidth
+	ti.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("99"))
+	ti.TextStyle = lipgloss.NewStyle()
+	return ti
+}
+
 // initSearchInput creates and configures a text input for session search.
 func initSearchInput() textinput.Model {
 	ti := textinput.New()
