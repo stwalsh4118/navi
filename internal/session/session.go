@@ -17,9 +17,13 @@ const (
 
 // Polling constants
 const (
-	PollInterval = 500 * time.Millisecond
-	StatusDir    = "~/.claude-sessions"
+	PollInterval      = 500 * time.Millisecond
+	DefaultStatusDir  = "~/.claude-sessions"
 )
+
+// StatusDir is the directory where session status files are stored.
+// Tests can override this to use a temporary directory.
+var StatusDir = DefaultStatusDir
 
 // Info represents the status data for a single Claude Code session.
 type Info struct {

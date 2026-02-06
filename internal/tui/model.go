@@ -108,6 +108,18 @@ type remoteSessionsMsg struct {
 	sessions []session.Info
 }
 
+// remoteGitInfoMsg is returned after fetching git info from a remote session via SSH.
+type remoteGitInfoMsg struct {
+	cwd  string
+	info *git.Info
+	err  error
+}
+
+// remoteDismissResultMsg is returned after dismissing a remote session via SSH.
+type remoteDismissResultMsg struct {
+	err error
+}
+
 // Init implements tea.Model.
 // Starts the tick command and performs initial poll.
 func (m Model) Init() tea.Cmd {
@@ -187,9 +199,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			filteredSessions := m.getFilteredSessions()
 			if len(filteredSessions) > 0 && m.cursor < len(filteredSessions) {
 				s := filteredSessions[m.cursor]
-				// Skip dismiss for remote sessions (not supported)
-				if s.Remote != "" {
-					return m, nil
+				// Remote dismiss via SSH
+				if s.Remote != "" && m.SSHPool != nil {
+					return m, dismissRemoteSessionCmd(m.SSHPool, s.Remote, s.TmuxSession)
 				}
 				_ = dismissSession(s) // Ignore error, poll will update view
 				return m, pollSessions
@@ -211,14 +223,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "x":
-			// Open kill confirmation dialog (local sessions only)
+			// Open kill confirmation dialog
 			filteredSessions := m.getFilteredSessions()
 			if len(filteredSessions) > 0 && m.cursor < len(filteredSessions) {
 				s := filteredSessions[m.cursor]
-				// Skip kill for remote sessions (not supported)
-				if s.Remote != "" {
-					return m, nil
-				}
 				m.sessionToModify = &s
 				m.dialogMode = DialogKillConfirm
 				m.dialogError = ""
@@ -227,14 +235,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "R":
-			// Open rename dialog (local sessions only)
+			// Open rename dialog
 			filteredSessions := m.getFilteredSessions()
 			if len(filteredSessions) > 0 && m.cursor < len(filteredSessions) {
 				s := filteredSessions[m.cursor]
-				// Skip rename for remote sessions (not supported)
-				if s.Remote != "" {
-					return m, nil
-				}
 				m.sessionToModify = &s
 				m.dialogMode = DialogRename
 				m.dialogError = ""
@@ -257,7 +261,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Trigger immediate capture and start polling when showing
 				m.previewLastCursor = m.cursor
 				return m, tea.Batch(
-					capturePreviewCmd(filteredSessions[m.cursor].TmuxSession),
+					m.capturePreviewForSession(filteredSessions[m.cursor]),
 					previewTickCmd(),
 				)
 			}
@@ -333,18 +337,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "G":
-			// Open git detail view for selected session (local sessions only)
+			// Open git detail view for selected session
 			filteredSessions := m.getFilteredSessions()
 			if len(filteredSessions) > 0 && m.cursor < len(filteredSessions) {
 				s := filteredSessions[m.cursor]
-				// Skip git view for remote sessions (not supported)
-				if s.Remote != "" {
-					return m, nil
-				}
 				m.sessionToModify = &s
 				m.dialogMode = DialogGitDetail
 				m.dialogError = ""
-				// Lazily fetch PR info in background (only when opening detail view)
+
+				// For remote sessions, check cache or fetch via SSH
+				if s.Remote != "" && m.SSHPool != nil {
+					if cached, ok := m.gitCache[s.CWD]; ok && !cached.IsStale() {
+						m.sessionToModify.Git = cached
+						return m, fetchRemotePRCmd(s.CWD, cached.Branch, cached.Remote)
+					}
+					return m, fetchRemoteGitCmd(m.SSHPool, s.Remote, s.CWD)
+				}
+
+				// For local sessions, lazily fetch PR info
 				if s.CWD != "" && s.Git != nil {
 					return m, fetchPRCmd(s.CWD)
 				}
@@ -417,14 +427,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		session.SortSessions(allSessions)
 		m.sessions = allSessions
 
-		// Merge cached git info into local sessions only
-		// (remote sessions with same path shouldn't get local git info)
+		// Merge cached git info into sessions
 		if m.gitCache != nil {
 			for i := range m.sessions {
-				if m.sessions[i].Remote == "" {
-					if info, ok := m.gitCache[m.sessions[i].CWD]; ok {
-						m.sessions[i].Git = info
-					}
+				if info, ok := m.gitCache[m.sessions[i].CWD]; ok {
+					m.sessions[i].Git = info
 				}
 			}
 		}
@@ -441,7 +448,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.cursor = i
 					m.lastSelectedSession = "" // Clear after restoring
 					if needsGitPoll {
-						return m, pollGitInfoCmd(m.sessions)
+						return m, m.pollAllGitInfoCmd()
 					}
 					return m, nil
 				}
@@ -457,7 +464,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if needsGitPoll {
-			return m, pollGitInfoCmd(m.sessions)
+			return m, m.pollAllGitInfoCmd()
 		}
 
 	case remoteSessionsMsg:
@@ -476,14 +483,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			session.SortSessions(allSessions)
 			m.sessions = allSessions
 
-			// Merge git info into local sessions only
-			// (remote sessions with same path shouldn't get local git info)
+			// Merge cached git info into sessions
 			if m.gitCache != nil {
 				for i := range m.sessions {
-					if m.sessions[i].Remote == "" {
-						if info, ok := m.gitCache[m.sessions[i].CWD]; ok {
-							m.sessions[i].Git = info
-						}
+					if info, ok := m.gitCache[m.sessions[i].CWD]; ok {
+						m.sessions[i].Git = info
 					}
 				}
 			}
@@ -492,6 +496,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			filteredSessions := m.getFilteredSessions()
 			if m.cursor >= len(filteredSessions) && len(filteredSessions) > 0 {
 				m.cursor = len(filteredSessions) - 1
+			}
+
+			// Poll remote git info after session list is loaded.
+			// This runs after remote session polling completes, avoiding SSH mutex contention.
+			if m.SSHPool != nil {
+				if cmd := pollRemoteGitInfoCmd(m.SSHPool, m.sessions); cmd != nil {
+					return m, cmd
+				}
 			}
 		}
 
@@ -510,7 +522,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			filteredSessions := m.getFilteredSessions()
 			if len(filteredSessions) > 0 && m.cursor < len(filteredSessions) {
 				return m, tea.Batch(
-					capturePreviewCmd(filteredSessions[m.cursor].TmuxSession),
+					m.capturePreviewForSession(filteredSessions[m.cursor]),
 					previewTickCmd(),
 				)
 			}
@@ -574,7 +586,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Capture current session and schedule next tick
 		if m.cursor < len(filteredSessions) {
 			return m, tea.Batch(
-				capturePreviewCmd(filteredSessions[m.cursor].TmuxSession),
+				m.capturePreviewForSession(filteredSessions[m.cursor]),
 				previewTickCmd(),
 			)
 		}
@@ -587,7 +599,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.cursor < len(filteredSessions) {
-			return m, capturePreviewCmd(filteredSessions[m.cursor].TmuxSession)
+			return m, m.capturePreviewForSession(filteredSessions[m.cursor])
 		}
 		return m, nil
 
@@ -598,7 +610,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, gitTickCmd()
 		}
 		// Poll git info for all sessions and schedule next tick
-		return m, tea.Batch(pollGitInfoCmd(m.sessions), gitTickCmd())
+		return m, tea.Batch(m.pollAllGitInfoCmd(), gitTickCmd())
 
 	case gitInfoMsg:
 		// Initialize cache if nil
@@ -609,13 +621,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for cwd, info := range msg.cache {
 			m.gitCache[cwd] = info
 		}
-		// Update local sessions with cached git info
-		// (remote sessions with same path shouldn't get local git info)
+		// Update sessions with cached git info
 		for i := range m.sessions {
-			if m.sessions[i].Remote == "" {
-				if info, ok := m.gitCache[m.sessions[i].CWD]; ok {
-					m.sessions[i].Git = info
-				}
+			if info, ok := m.gitCache[m.sessions[i].CWD]; ok {
+				m.sessions[i].Git = info
 			}
 		}
 		return m, nil
@@ -632,11 +641,52 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+
+	case remoteDismissResultMsg:
+		// Remote dismiss completed - refresh sessions regardless of error
+		// (errors are silent, same as local dismiss behavior)
+		return m, pollSessions
+
+	case remoteGitInfoMsg:
+		if msg.err != nil {
+			m.dialogError = "SSH error: " + msg.err.Error()
+			return m, nil
+		}
+		if msg.info != nil {
+			// Cache the remote git info
+			if m.gitCache == nil {
+				m.gitCache = make(map[string]*git.Info)
+			}
+			m.gitCache[msg.cwd] = msg.info
+
+			// Update the session being viewed
+			if m.sessionToModify != nil && m.sessionToModify.CWD == msg.cwd {
+				m.sessionToModify.Git = msg.info
+			}
+
+			// Also update any sessions with matching CWD
+			for i := range m.sessions {
+				if m.sessions[i].CWD == msg.cwd && m.sessions[i].Remote != "" {
+					m.sessions[i].Git = msg.info
+				}
+			}
+
+			// Trigger PR fetch using the branch and remote URL via gh -R flag
+			return m, fetchRemotePRCmd(msg.cwd, msg.info.Branch, msg.info.Remote)
+		}
+		return m, nil
 	}
 	return m, nil
 }
 
 // Empty state message constant
+// pollAllGitInfoCmd returns a batched command that polls git info for local sessions
+// and triggers remote git polling if remote sessions exist.
+// Remote git info is fetched separately to avoid mutex contention with remote session polling.
+func (m Model) pollAllGitInfoCmd() tea.Cmd {
+	return pollGitInfoCmd(m.sessions)
+}
+
 const noSessionsMessage = "  No active sessions"
 
 // getPreviewWidth returns the width to use for the preview pane (side layout).
@@ -744,6 +794,10 @@ func (m Model) updateDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "y":
 		// Confirm kill
 		if m.dialogMode == DialogKillConfirm && m.sessionToModify != nil {
+			// Remote kill via SSH
+			if m.sessionToModify.Remote != "" && m.SSHPool != nil {
+				return m, killRemoteSessionCmd(m.SSHPool, m.sessionToModify.Remote, m.sessionToModify.TmuxSession)
+			}
 			return m, killSessionCmd(m.sessionToModify.TmuxSession)
 		}
 
@@ -845,7 +899,12 @@ func (m Model) submitRename() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Rename the session
+	// Remote rename via SSH
+	if m.sessionToModify.Remote != "" && m.SSHPool != nil {
+		return m, renameRemoteSessionCmd(m.SSHPool, m.sessionToModify.Remote, oldName, newName)
+	}
+
+	// Rename the local session
 	return m, renameSessionCmd(oldName, newName)
 }
 

@@ -335,13 +335,6 @@ func (m Model) renderHeader() string {
 func (m Model) renderFooter() string {
 	var parts []string
 
-	// Check if currently selected session is remote
-	isRemoteSelected := false
-	filteredSessions := m.getFilteredSessions()
-	if len(filteredSessions) > 0 && m.cursor < len(filteredSessions) {
-		isRemoteSelected = filteredSessions[m.cursor].Remote != ""
-	}
-
 	// Always show these
 	parts = append(parts, "↑/↓ nav", "⏎ attach", "p preview")
 
@@ -356,12 +349,8 @@ func (m Model) renderFooter() string {
 		parts = append(parts, filterLabel)
 	}
 
-	// Show local-only options only when a local session is selected
-	if !isRemoteSelected {
-		parts = append(parts, "d dismiss", "n new", "x kill", "R rename", "G git")
-	} else {
-		parts = append(parts, "n new") // new session is always available
-	}
+	// Show session action keybindings
+	parts = append(parts, "d dismiss", "n new", "x kill", "R rename", "G git")
 
 	parts = append(parts, "r refresh", "q quit")
 

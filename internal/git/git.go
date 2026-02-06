@@ -74,6 +74,29 @@ func GetPRNumber(dir string) int {
 	return 0
 }
 
+// GetPRNumberByRepo fetches the PR number for a given branch using the -R flag
+// instead of relying on a local git directory. This is used for remote sessions
+// where the CWD doesn't exist locally.
+func GetPRNumberByRepo(branch, remoteURL string) int {
+	ghInfo := ParseGitHubRemote(remoteURL)
+	if ghInfo == nil || branch == "" {
+		return 0
+	}
+
+	repo := fmt.Sprintf("%s/%s", ghInfo.Owner, ghInfo.Repo)
+	cmd := exec.Command("gh", "pr", "view", branch, "-R", repo, "--json", "number", "--jq", ".number")
+	output, err := cmd.Output()
+	if err != nil {
+		return 0
+	}
+
+	numStr := strings.TrimSpace(string(output))
+	if num, err := strconv.Atoi(numStr); err == nil && num > 0 {
+		return num
+	}
+	return 0
+}
+
 // ParseGitHubRemote parses a git remote URL and extracts GitHub owner and repo.
 func ParseGitHubRemote(remoteURL string) *GitHubInfo {
 	if remoteURL == "" {

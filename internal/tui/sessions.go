@@ -14,6 +14,7 @@ import (
 	"github.com/stwalsh4118/navi/internal/git"
 	"github.com/stwalsh4118/navi/internal/metrics"
 	"github.com/stwalsh4118/navi/internal/pathutil"
+	"github.com/stwalsh4118/navi/internal/remote"
 	"github.com/stwalsh4118/navi/internal/session"
 	"github.com/stwalsh4118/navi/internal/tokens"
 )
@@ -151,14 +152,15 @@ func gitTickCmd() tea.Cmd {
 	})
 }
 
-// pollGitInfoCmd returns a command that polls git info for all session working directories.
-// Git info is fetched concurrently for all sessions to minimize latency.
+// pollGitInfoCmd returns a command that polls git info for local session working directories.
+// Git info is fetched concurrently for all local sessions to minimize latency.
+// Remote sessions are handled separately by pollRemoteGitInfoCmd.
 func pollGitInfoCmd(sessions []session.Info) tea.Cmd {
 	return func() tea.Msg {
-		// Collect unique CWDs to avoid duplicate work
+		// Collect unique CWDs from local sessions only
 		cwds := make(map[string]bool)
 		for _, s := range sessions {
-			if s.CWD != "" {
+			if s.CWD != "" && s.Remote == "" {
 				cwds[s.CWD] = true
 			}
 		}
@@ -195,12 +197,135 @@ func pollGitInfoCmd(sessions []session.Info) tea.Cmd {
 	}
 }
 
+// pollRemoteGitInfoCmd returns a command that polls git info for remote sessions via SSH.
+// It fetches git info concurrently for all unique remote+CWD combinations.
+func pollRemoteGitInfoCmd(pool *remote.SSHPool, sessions []session.Info) tea.Cmd {
+	// Collect unique remote+CWD pairs
+	type remoteKey struct {
+		remote string
+		cwd    string
+	}
+	seen := make(map[remoteKey]bool)
+	var keys []remoteKey
+	for _, s := range sessions {
+		if s.Remote != "" && s.CWD != "" {
+			k := remoteKey{remote: s.Remote, cwd: s.CWD}
+			if !seen[k] {
+				seen[k] = true
+				keys = append(keys, k)
+			}
+		}
+	}
+
+	if len(keys) == 0 {
+		return nil
+	}
+
+	return func() tea.Msg {
+		type result struct {
+			cwd  string
+			info *git.Info
+		}
+		results := make(chan result, len(keys))
+
+		for _, k := range keys {
+			go func(remoteName, cwd string) {
+				info, _ := remote.FetchGitInfo(pool, remoteName, cwd)
+				results <- result{cwd: cwd, info: info}
+			}(k.remote, k.cwd)
+		}
+
+		cache := make(map[string]*git.Info)
+		for i := 0; i < len(keys); i++ {
+			r := <-results
+			if r.info != nil {
+				cache[r.cwd] = r.info
+			}
+		}
+
+		return gitInfoMsg{cache: cache}
+	}
+}
+
+// killRemoteSessionCmd returns a command that kills a remote tmux session via SSH.
+func killRemoteSessionCmd(pool *remote.SSHPool, remoteName, sessionName string) tea.Cmd {
+	return func() tea.Msg {
+		config := pool.GetRemoteConfig(remoteName)
+		if config == nil {
+			return killSessionResultMsg{err: fmt.Errorf("remote %q not found", remoteName)}
+		}
+		err := remote.KillSession(pool, remoteName, sessionName, config.SessionsDir)
+		return killSessionResultMsg{err: err}
+	}
+}
+
+// renameRemoteSessionCmd returns a command that renames a remote tmux session via SSH.
+func renameRemoteSessionCmd(pool *remote.SSHPool, remoteName, oldName, newName string) tea.Cmd {
+	return func() tea.Msg {
+		config := pool.GetRemoteConfig(remoteName)
+		if config == nil {
+			return renameSessionResultMsg{err: fmt.Errorf("remote %q not found", remoteName), newName: newName}
+		}
+		err := remote.RenameSession(pool, remoteName, oldName, newName, config.SessionsDir)
+		return renameSessionResultMsg{err: err, newName: newName}
+	}
+}
+
+// dismissRemoteSessionCmd returns a command that dismisses a remote session via SSH.
+func dismissRemoteSessionCmd(pool *remote.SSHPool, remoteName, sessionName string) tea.Cmd {
+	return func() tea.Msg {
+		config := pool.GetRemoteConfig(remoteName)
+		if config == nil {
+			return remoteDismissResultMsg{err: fmt.Errorf("remote %q not found", remoteName)}
+		}
+		err := remote.DismissSession(pool, remoteName, sessionName, config.SessionsDir)
+		return remoteDismissResultMsg{err: err}
+	}
+}
+
+// captureRemotePreviewCmd returns a command that captures preview content from a remote tmux session via SSH.
+func captureRemotePreviewCmd(pool *remote.SSHPool, remoteName, sessionName string) tea.Cmd {
+	return func() tea.Msg {
+		content, err := remote.CapturePane(pool, remoteName, sessionName, previewDefaultLines)
+		if err != nil {
+			return previewContentMsg{content: "Failed to fetch remote preview: " + err.Error()}
+		}
+		return previewContentMsg{content: content}
+	}
+}
+
+// capturePreviewForSession returns the appropriate capture command for the given session.
+// Uses SSH for remote sessions and local tmux for local sessions.
+func (m Model) capturePreviewForSession(s session.Info) tea.Cmd {
+	if s.Remote != "" && m.SSHPool != nil {
+		return captureRemotePreviewCmd(m.SSHPool, s.Remote, s.TmuxSession)
+	}
+	return capturePreviewCmd(s.TmuxSession)
+}
+
+// fetchRemoteGitCmd returns a command that fetches git info from a remote session via SSH.
+func fetchRemoteGitCmd(pool *remote.SSHPool, remoteName, cwd string) tea.Cmd {
+	return func() tea.Msg {
+		info, err := remote.FetchGitInfo(pool, remoteName, cwd)
+		return remoteGitInfoMsg{cwd: cwd, info: info, err: err}
+	}
+}
+
 // fetchPRCmd returns a command that fetches PR info for a specific directory.
 // This is called lazily (e.g., when opening git detail view) to avoid slow gh CLI calls on every poll.
 func fetchPRCmd(cwd string) tea.Cmd {
 	return func() tea.Msg {
 		dir := pathutil.ExpandPath(cwd)
 		prNum := git.GetPRNumber(dir)
+		return gitPRMsg{cwd: cwd, prNum: prNum}
+	}
+}
+
+// fetchRemotePRCmd returns a command that fetches PR info using branch and remote URL
+// instead of a local directory. Used for remote sessions where the CWD doesn't exist locally.
+func fetchRemotePRCmd(cwd, branch, remoteURL string) tea.Cmd {
+	return func() tea.Msg {
+		prNum := git.GetPRNumberByRepo(branch, remoteURL)
 		return gitPRMsg{cwd: cwd, prNum: prNum}
 	}
 }

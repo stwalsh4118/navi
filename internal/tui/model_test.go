@@ -451,6 +451,12 @@ func TestQuitKey(t *testing.T) {
 
 func TestDismissKey(t *testing.T) {
 	t.Run("d returns poll command when sessions exist", func(t *testing.T) {
+		// Use temp dir to avoid writing to real sessions directory
+		tmpDir := t.TempDir()
+		origDir := session.StatusDir
+		session.StatusDir = tmpDir
+		t.Cleanup(func() { session.StatusDir = origDir })
+
 		m := Model{
 			width:  80,
 			height: 24,
