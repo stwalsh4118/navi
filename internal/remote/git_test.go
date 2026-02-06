@@ -170,7 +170,7 @@ func TestParseAheadBehind(t *testing.T) {
 func TestBuildGitCommand(t *testing.T) {
 	cmd := buildGitCommand("/home/user/project")
 
-	if !contains(cmd, `cd "/home/user/project"`) {
+	if !contains(cmd, `cd '/home/user/project'`) {
 		t.Errorf("command should contain cd with quoted path, got: %s", cmd)
 	}
 	if !contains(cmd, "BRANCH:") {
@@ -184,7 +184,7 @@ func TestBuildGitCommand(t *testing.T) {
 func TestBuildGitCommand_PathWithSpaces(t *testing.T) {
 	cmd := buildGitCommand("/home/user/my project")
 
-	if !contains(cmd, `cd "/home/user/my project"`) {
+	if !contains(cmd, `cd '/home/user/my project'`) {
 		t.Errorf("command should handle path with spaces, got: %s", cmd)
 	}
 }
@@ -192,8 +192,18 @@ func TestBuildGitCommand_PathWithSpaces(t *testing.T) {
 func TestBuildGitCommand_PathWithQuotes(t *testing.T) {
 	cmd := buildGitCommand(`/home/user/project"name`)
 
-	if !contains(cmd, `cd "/home/user/project\"name"`) {
+	// shellQuote wraps in single quotes; double quotes pass through unchanged.
+	if !contains(cmd, `cd '/home/user/project"name'`) {
 		t.Errorf("command should escape quotes in path, got: %s", cmd)
+	}
+}
+
+func TestBuildGitCommand_PathWithSingleQuote(t *testing.T) {
+	cmd := buildGitCommand("/home/user/project'name")
+
+	// shellQuote escapes embedded single quotes as '"'"'
+	if !contains(cmd, `cd '/home/user/project'"'"'name'`) {
+		t.Errorf("command should escape single quotes in path, got: %s", cmd)
 	}
 }
 

@@ -38,12 +38,9 @@ func FetchGitInfo(pool *SSHPool, remoteName, cwd string) (*git.Info, error) {
 // buildGitCommand constructs a shell command that cd's to cwd and runs
 // multiple git commands with labeled output, all in a single SSH call.
 func buildGitCommand(cwd string) string {
-	// Escape double quotes in the path for safe shell embedding.
-	safeCwd := strings.ReplaceAll(cwd, "\"", "\\\"")
-
 	return fmt.Sprintf(
-		`cd "%s" && echo "BRANCH:$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" && echo "DIRTY:$(git status --porcelain 2>/dev/null | head -1)" && echo "REMOTE:$(git remote get-url origin 2>/dev/null)" && echo "LASTCOMMIT:$(git log -1 --format='%%h %%s' 2>/dev/null)" && echo "AHEADBEHIND:$(git rev-list --left-right --count @{u}...HEAD 2>/dev/null)"`,
-		safeCwd,
+		`cd %s && echo "BRANCH:$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" && echo "DIRTY:$(git status --porcelain 2>/dev/null | head -1)" && echo "REMOTE:$(git remote get-url origin 2>/dev/null)" && echo "LASTCOMMIT:$(git log -1 --format='%%h %%s' 2>/dev/null)" && echo "AHEADBEHIND:$(git rev-list --left-right --count @{u}...HEAD 2>/dev/null)"`,
+		shellQuote(cwd),
 	)
 }
 

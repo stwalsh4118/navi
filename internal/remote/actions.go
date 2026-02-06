@@ -37,11 +37,15 @@ func buildKillCommand(sessionName, sessionsDir string) string {
 func buildRenameCommand(oldName, newName, sessionsDir string) string {
 	oldFile := sessionsDir + "/" + oldName + ".json"
 	newFile := sessionsDir + "/" + newName + ".json"
+	// Escape sed metacharacters in newName to prevent injection in the sed pattern.
+	safeName := strings.ReplaceAll(newName, `\`, `\\`)
+	safeName = strings.ReplaceAll(safeName, `/`, `\/`)
+	safeName = strings.ReplaceAll(safeName, `&`, `\&`)
 	return fmt.Sprintf(
 		"tmux rename-session -t %s %s && sed -i 's/\"tmux_session\"[[:space:]]*:[[:space:]]*\"[^\"]*\"/\"tmux_session\": \"%s\"/' %s && mv %s %s",
 		shellQuote(oldName),
 		shellQuote(newName),
-		newName,
+		safeName,
 		shellQuote(oldFile),
 		shellQuote(oldFile),
 		shellQuote(newFile),
