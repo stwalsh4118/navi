@@ -387,6 +387,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.sortMode = (m.sortMode + 1) % SortMode(sortModeCount)
 			return m, nil
 
+		case "o":
+			// Toggle offline session visibility
+			m.hideOffline = !m.hideOffline
+			// Clamp cursor for new filtered list
+			filteredSessions := m.getFilteredSessions()
+			if m.cursor >= len(filteredSessions) {
+				if len(filteredSessions) > 0 {
+					m.cursor = len(filteredSessions) - 1
+				} else {
+					m.cursor = 0
+				}
+			}
+			return m, nil
+
+		case "0":
+			// Clear status filter
+			m.statusFilter = ""
+			m.cursor = 0
+			return m, nil
+
+		case "1", "2", "3", "4", "5":
+			// Toggle status filter by number key
+			targetStatus := statusFilterKeys[msg.String()]
+			if m.statusFilter == targetStatus {
+				m.statusFilter = "" // Toggle off if same key pressed
+			} else {
+				m.statusFilter = targetStatus
+			}
+			m.cursor = 0
+			return m, nil
+
 		case "f":
 			// Cycle filter mode: All -> Local -> Remote -> All
 			if len(m.Remotes) > 0 {
