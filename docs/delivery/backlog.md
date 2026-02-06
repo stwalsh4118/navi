@@ -32,7 +32,7 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 24 | User | As a user, I want customizable themes and keybindings so that I can personalize the TUI to my preferences | Proposed | [View Details](./24/prd.md) |
 | 25 | User | As a user, I want mouse support so that I can click to select sessions and scroll the list | Proposed | [View Details](./25/prd.md) |
 | 26 | User | As a user, I want to see token usage per session by reading Claude's transcript files so that I can track API costs | Agreed | [View Details](./26/prd.md) |
-| 27 | User | As a user, I want full management capabilities for remote sessions (git info, preview, kill, rename, dismiss) so that remote sessions have feature parity with local sessions | Agreed | [View Details](./27/prd.md) |
+| 27 | User | As a user, I want full management capabilities for remote sessions (git info, preview, kill, rename, dismiss) so that remote sessions have feature parity with local sessions | InReview | [View Details](./27/prd.md) |
 
 ## History Log
 
@@ -72,3 +72,4 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 2026-02-05 17:35:00 | 26 | Status Change | Proposed → Agreed - Approved for implementation | User |
 | 2026-02-06 00:00:00 | 27 | Created | Enhanced Remote Session Management - git, preview, kill, rename, dismiss for remote sessions | User |
 | 2026-02-06 00:00:00 | 27 | Status Change | Proposed → Agreed - PBI reviewed, open questions resolved, approved for task breakdown | User |
+| 2026-02-06 17:38:38 | 27 | Status Change | Agreed → InReview - All 7 tasks completed, all tests pass, ready for user review | AI_Agent |
