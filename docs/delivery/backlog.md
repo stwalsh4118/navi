@@ -18,7 +18,7 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 10 | User | As a user, I want webhook integrations (Slack, Discord) so that I can receive session alerts in my team communication tools | Proposed | [View Details](./10/prd.md) |
 | 11 | User | As a user, I want a preview pane showing recent session output so that I can see what's happening without fully attaching | Agreed | [View Details](./11/prd.md) |
 | 12 | User | As a user, I want to see session metrics (token usage, time tracking, tool activity) so that I can understand resource consumption | Agreed | [View Details](./12/prd.md) |
-| 13 | User | As a user, I want fuzzy search and filtering so that I can quickly find sessions when I have many running | Agreed | [View Details](./13/prd.md) |
+| 13 | User | As a user, I want fuzzy search and filtering so that I can quickly find sessions when I have many running | InReview | [View Details](./13/prd.md) |
 | 14 | User | As a user, I want to select multiple sessions and perform bulk actions so that I can efficiently manage many sessions at once | Proposed | [View Details](./14/prd.md) |
 | 15 | User | As a user, I want a split view to compare two sessions side-by-side so that I can monitor related work simultaneously | Proposed | [View Details](./15/prd.md) |
 | 16 | User | As a user, I want git integration showing branch, status, and diffs so that I have project context without leaving the TUI | Proposed | [View Details](./16/prd.md) |
@@ -74,3 +74,4 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 2026-02-06 00:00:00 | 27 | Status Change | Proposed → Agreed - PBI reviewed, open questions resolved, approved for task breakdown | User |
 | 2026-02-06 17:38:38 | 27 | Status Change | Agreed → InReview - All 7 tasks completed, all tests pass, ready for user review | AI_Agent |
 | 2026-02-06 18:00:00 | 13 | Status Change | Proposed → Agreed - Approved for task breakdown | User |
+| 2026-02-06 18:41:08 | 13 | Status Change | Agreed → InReview - All 6 tasks completed, all tests pass, ready for user review | AI_Agent |
