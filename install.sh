@@ -159,7 +159,7 @@ if ! command -v go &> /dev/null; then
     exit 1
 fi
 
-if go build -o "$BINARY_NAME" .; then
+if go build -o "$BINARY_NAME" ./cmd/navi/; then
     echo "✓ Built $BINARY_NAME binary"
 else
     echo "✗ Build failed"

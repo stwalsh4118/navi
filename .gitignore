@@ -1,5 +1,5 @@
 # Binary
-navi
+/navi
 
 # IDE
 .idea/
@@ -14,4 +14,4 @@ Thumbs.db
 # Test coverage
 coverage.out
 
-debug
+/debug

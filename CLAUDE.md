@@ -32,6 +32,7 @@ This policy provides a single, authoritative, and machine-readable source of tru
   - `pnpm run <script>` - Run scripts
   - `pnpm add <package>` - Add dependencies
   - `pnpm test` - Run tests
+- **Browser Automation**: The Playwright MCP server is available for browser-based verification. It provides tools such as `browser_navigate`, `browser_click`, `browser_type`, `browser_snapshot`, `browser_take_screenshot`, and others for interacting with web pages in a headless Chromium browser.
 
 # 2. Fundamental Principles
 
@@ -308,6 +309,7 @@ Example of the corresponding update in 1-tasks.md:
 - **event_transition on "submit_for_review" from InProgress to Review**:
   1. Ensure all task requirements are met.
   2. Run all relevant tests and ensure they pass.
+  2a. **Browser Verification** (see Section 5.5 for details): If the task involves any browser-facing functionality (web UI, rendered pages, HTTP endpoints serving HTML, browser-based workflows), use the Playwright MCP tools to verify the feature works correctly in a real browser before proceeding. Do not skip this step or ask the User to verify manually when browser automation can confirm correctness.
   3. **Run Code Quality Tools** (see Section 4.6.1 for details):
      - For Go code: Run `golangci-lint run` and `go vet ./...` in the `api/` directory
      - Address all errors and warnings before proceeding
@@ -629,6 +631,40 @@ Only one task per PBI should be 'InProgress' at any given time to maintain focus
     *   **Unit Tests**: Located in `test/unit/` mirroring the source directory structure.
     *   **Integration Tests**: Located in `test/integration/` (or `test/<module>/` e.g., `test/server/` as per existing conventions if more appropriate), reflecting the module or subsystem being tested.
 2.  **Test Naming**: Test files and descriptions should be named clearly and descriptively.
+
+## 5.5 Browser-Based Verification with Playwright
+
+> Rationale: Enables the AI Agent to autonomously verify browser-facing features without requiring User intervention, closing the feedback loop for web UI and HTTP-served content.
+
+### 5.5.1 When to Use
+
+Browser verification via the Playwright MCP tools MUST be used when a task involves any of the following:
+- Web UI components or pages
+- HTTP endpoints that serve HTML or render content in a browser
+- Browser-based workflows or user interactions
+- Changes to styling, layout, or visual presentation
+- Client-side JavaScript behaviour
+- Any feature where the correctness is best judged by what appears in a browser
+
+### 5.5.2 Verification Workflow
+
+When browser verification is required, the AI Agent must:
+
+1. **Start the application** (or relevant service) in a test/dev mode if not already running.
+2. **Navigate** to the relevant page or endpoint using `browser_navigate`.
+3. **Capture the page state** using `browser_snapshot` (preferred for structural/content verification) or `browser_take_screenshot` (for visual/layout verification).
+4. **Interact with the page** as needed using `browser_click`, `browser_type`, `browser_fill_form`, `browser_select_option`, etc. to exercise the feature under test.
+5. **Assert correctness** by inspecting the snapshot or screenshot output against the task's acceptance criteria and expected behaviour.
+6. **Iterate**: If the verification reveals issues, fix the code and re-verify. Do not submit for review until browser verification passes.
+7. **Document results** in the task's Verification section, noting what was checked and confirmed via browser automation.
+
+### 5.5.3 Principles
+
+- **Autonomous verification**: The AI Agent should use browser verification to self-check work rather than relying on the User to manually test in a browser.
+- **Snapshot over screenshot**: Prefer `browser_snapshot` for content and accessibility verification as it returns structured data. Use `browser_take_screenshot` when visual/layout correctness matters.
+- **Iterative fix loop**: If browser verification fails, diagnose the issue, fix the code, and re-run verification until it passes. Do not submit a task for review with known browser verification failures.
+- **Proportional use**: Not every task needs extensive browser testing. A simple content change may need one navigation and snapshot check; a complex interactive form may need multiple interaction sequences.
+- **Console and network checks**: Use `browser_console_messages` to check for JavaScript errors and `browser_network_requests` to verify API calls when relevant.
 
 # 6. API Specifications Management
 
