@@ -497,6 +497,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor >= len(filteredSessions) && len(filteredSessions) > 0 {
 				m.cursor = len(filteredSessions) - 1
 			}
+
+			// Poll remote git info after session list is loaded.
+			// This runs after remote session polling completes, avoiding SSH mutex contention.
+			if m.SSHPool != nil {
+				if cmd := pollRemoteGitInfoCmd(m.SSHPool, m.sessions); cmd != nil {
+					return m, cmd
+				}
+			}
 		}
 
 	case tea.WindowSizeMsg:
@@ -672,16 +680,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // Empty state message constant
-// pollAllGitInfoCmd returns a batched command that polls git info for both local and remote sessions.
+// pollAllGitInfoCmd returns a batched command that polls git info for local sessions
+// and triggers remote git polling if remote sessions exist.
+// Remote git info is fetched separately to avoid mutex contention with remote session polling.
 func (m Model) pollAllGitInfoCmd() tea.Cmd {
-	local := pollGitInfoCmd(m.sessions)
-	if m.SSHPool != nil {
-		remotePoll := pollRemoteGitInfoCmd(m.SSHPool, m.sessions)
-		if remotePoll != nil {
-			return tea.Batch(local, remotePoll)
-		}
-	}
-	return local
+	return pollGitInfoCmd(m.sessions)
 }
 
 const noSessionsMessage = "  No active sessions"
