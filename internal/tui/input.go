@@ -14,9 +14,10 @@ import (
 
 // Text input configuration constants
 const (
-	inputNameCharLimit = 50
-	inputDirCharLimit  = 256
-	inputWidth         = 40
+	inputNameCharLimit   = 50
+	inputDirCharLimit    = 256
+	inputSearchCharLimit = 100
+	inputWidth           = 40
 )
 
 // Input focus indices
@@ -33,6 +34,17 @@ var (
 	errNameExists   = errors.New("session name already exists")
 	errInvalidDir   = errors.New("directory does not exist")
 )
+
+// initSearchInput creates and configures a text input for session search.
+func initSearchInput() textinput.Model {
+	ti := textinput.New()
+	ti.Placeholder = "Search sessions..."
+	ti.CharLimit = inputSearchCharLimit
+	ti.Width = inputWidth
+	ti.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("99"))
+	ti.TextStyle = lipgloss.NewStyle()
+	return ti
+}
 
 // initNameInput creates and configures a text input for session names.
 func initNameInput() textinput.Model {

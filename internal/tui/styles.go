@@ -66,6 +66,17 @@ var (
 				Italic(true)
 )
 
+// Search bar style
+var searchBarStyle = lipgloss.NewStyle().
+	Border(lipgloss.RoundedBorder()).
+	BorderForeground(lipgloss.Color("99")).
+	Padding(0, 1)
+
+// Filter indicator style
+var filterActiveStyle = lipgloss.NewStyle().
+	Foreground(lipgloss.Color("99")).
+	Bold(true)
+
 // Status icon constants
 const (
 	iconWaiting    = "⏳"

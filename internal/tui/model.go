@@ -54,6 +54,14 @@ type Model struct {
 	Remotes    []remote.Config // Configured remote machines
 	SSHPool    *remote.SSHPool // SSH connection pool for remotes
 	filterMode session.FilterMode // Current session filter mode
+
+	// Search and filter state
+	searchQuery  string          // Current search text
+	searchMode   bool            // Whether search input is active
+	searchInput  textinput.Model // Text input for search
+	statusFilter string          // Active status filter (empty = show all)
+	hideOffline  bool            // Whether to hide offline/done sessions (default false = show all)
+	sortMode     SortMode        // Active sort mode
 }
 
 // Message types for Bubble Tea communication.
@@ -139,7 +147,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateDialog(msg)
 		}
 
-		// Main keybindings (only when no dialog is open)
+		// Handle search mode - forward most keys to search input
+		if m.searchMode {
+			return m.updateSearchMode(msg)
+		}
+
+		// Main keybindings (only when no dialog is open and not in search mode)
 		switch msg.String() {
 		case "up", "k":
 			filteredSessions := m.getFilteredSessions()
@@ -374,9 +387,58 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
+		case "/":
+			// Enter search mode
+			m.searchMode = true
+			m.searchInput.SetValue("")
+			m.searchInput.Focus()
+			return m, nil
+
+		case "esc":
+			// Clear active filters
+			if m.statusFilter != "" || m.hideOffline {
+				m.statusFilter = ""
+				m.hideOffline = false
+				m.cursor = 0
+				return m, nil
+			}
+			return m, nil
+
+		case "s":
+			// Cycle sort mode: Priority -> Name -> Age -> Status -> Directory -> Priority
+			m.sortMode = (m.sortMode + 1) % SortMode(sortModeCount)
+			return m, nil
+
+		case "o":
+			// Toggle offline session visibility
+			selectedSession := m.selectedSessionName()
+			m.hideOffline = !m.hideOffline
+			m.preserveCursor(selectedSession)
+			return m, nil
+
+		case "0":
+			// Clear status filter
+			selectedSession := m.selectedSessionName()
+			m.statusFilter = ""
+			m.preserveCursor(selectedSession)
+			return m, nil
+
+		case "1", "2", "3", "4", "5":
+			// Toggle status filter by number key
+			selectedSession := m.selectedSessionName()
+			targetStatus := statusFilterKeys[msg.String()]
+			if m.statusFilter == targetStatus {
+				m.statusFilter = "" // Toggle off if same key pressed
+			} else {
+				m.statusFilter = targetStatus
+			}
+			m.preserveCursor(selectedSession)
+			return m, nil
+
 		case "f":
 			// Cycle filter mode: All -> Local -> Remote -> All
 			if len(m.Remotes) > 0 {
+				selectedSession := m.selectedSessionName()
 				switch m.filterMode {
 				case session.FilterAll:
 					m.filterMode = session.FilterLocal
@@ -385,15 +447,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case session.FilterRemote:
 					m.filterMode = session.FilterAll
 				}
-				// Adjust cursor for new filtered list
-				filteredSessions := m.getFilteredSessions()
-				if m.cursor >= len(filteredSessions) {
-					if len(filteredSessions) > 0 {
-						m.cursor = len(filteredSessions) - 1
-					} else {
-						m.cursor = 0
-					}
-				}
+				m.preserveCursor(selectedSession)
 			}
 			return m, nil
 
@@ -950,32 +1004,156 @@ func (m Model) openGitLink() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// updateSearchMode handles key messages when search mode is active.
+// Navigation keys (up/down/enter) still work; other keys go to the search input.
+func (m Model) updateSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		// Clear search and exit search mode
+		m.searchMode = false
+		m.searchQuery = ""
+		m.searchInput.SetValue("")
+		m.searchInput.Blur()
+		m.cursor = 0
+		return m, nil
+
+	case "up", "k":
+		filteredSessions := m.getFilteredSessions()
+		if len(filteredSessions) > 0 {
+			if m.cursor > 0 {
+				m.cursor--
+			} else {
+				m.cursor = len(filteredSessions) - 1
+			}
+		}
+		return m, nil
+
+	case "down", "j":
+		filteredSessions := m.getFilteredSessions()
+		if len(filteredSessions) > 0 {
+			if m.cursor < len(filteredSessions)-1 {
+				m.cursor++
+			} else {
+				m.cursor = 0
+			}
+		}
+		return m, nil
+
+	case "enter":
+		filteredSessions := m.getFilteredSessions()
+		if len(filteredSessions) > 0 && m.cursor < len(filteredSessions) {
+			s := filteredSessions[m.cursor]
+			m.lastSelectedSession = s.TmuxSession
+
+			if s.Remote != "" && m.SSHPool != nil {
+				r := m.SSHPool.GetRemoteConfig(s.Remote)
+				if r != nil {
+					return m, attachRemoteSession(r, s.TmuxSession)
+				}
+			}
+			return m, attachSession(s.TmuxSession)
+		}
+		return m, nil
+	}
+
+	// Forward all other keys to search input
+	var cmd tea.Cmd
+	m.searchInput, cmd = m.searchInput.Update(msg)
+	m.searchQuery = m.searchInput.Value()
+
+	// Clamp cursor after search query change
+	filteredSessions := m.getFilteredSessions()
+	if m.cursor >= len(filteredSessions) {
+		if len(filteredSessions) > 0 {
+			m.cursor = len(filteredSessions) - 1
+		} else {
+			m.cursor = 0
+		}
+	}
+
+	return m, cmd
+}
+
+// selectedSessionName returns the name of the currently selected session, or empty string.
+func (m Model) selectedSessionName() string {
+	filtered := m.getFilteredSessions()
+	if m.cursor < len(filtered) {
+		return filtered[m.cursor].TmuxSession
+	}
+	return ""
+}
+
+// preserveCursor attempts to keep the cursor on the same session after a filter change.
+// If the session is no longer in the filtered list, cursor resets to 0.
+func (m *Model) preserveCursor(sessionName string) {
+	if sessionName == "" {
+		m.cursor = 0
+		return
+	}
+	filtered := m.getFilteredSessions()
+	for i, s := range filtered {
+		if s.TmuxSession == sessionName {
+			m.cursor = i
+			return
+		}
+	}
+	// Session not found in new filtered list
+	if len(filtered) > 0 && m.cursor >= len(filtered) {
+		m.cursor = len(filtered) - 1
+	} else if len(filtered) == 0 {
+		m.cursor = 0
+	}
+}
+
 // closeDialog resets dialog state.
 func (m *Model) closeDialog() {
 	m.dialogMode = DialogNone
 	m.dialogError = ""
 }
 
-// getFilteredSessions returns sessions filtered by the current filter mode.
+// getFilteredSessions returns sessions filtered and sorted by all active filters.
+// Pipeline: local/remote filter → status filter → offline filter → fuzzy search → sort.
 func (m Model) getFilteredSessions() []session.Info {
-	if m.filterMode == session.FilterAll {
-		return m.sessions
-	}
+	// Start with all sessions
+	result := m.sessions
 
-	var filtered []session.Info
-	for _, s := range m.sessions {
-		switch m.filterMode {
-		case session.FilterLocal:
-			if s.Remote == "" {
-				filtered = append(filtered, s)
-			}
-		case session.FilterRemote:
-			if s.Remote != "" {
-				filtered = append(filtered, s)
+	// Step 1: Local/Remote filter
+	if m.filterMode != session.FilterAll {
+		var filtered []session.Info
+		for _, s := range result {
+			switch m.filterMode {
+			case session.FilterLocal:
+				if s.Remote == "" {
+					filtered = append(filtered, s)
+				}
+			case session.FilterRemote:
+				if s.Remote != "" {
+					filtered = append(filtered, s)
+				}
 			}
 		}
+		result = filtered
 	}
-	return filtered
+
+	// Step 2: Status filter
+	if m.statusFilter != "" {
+		result = filterByStatus(result, m.statusFilter)
+	}
+
+	// Step 3: Offline filter
+	if m.hideOffline {
+		result = filterOffline(result)
+	}
+
+	// Step 4: Fuzzy search
+	if m.searchQuery != "" {
+		result = fuzzyFilter(result, m.searchQuery)
+	}
+
+	// Step 5: Sort
+	result = sortSessions(result, m.sortMode)
+
+	return result
 }
 
 // filterModeString returns a display string for the current filter mode.
@@ -1007,11 +1185,13 @@ func InitialModel() Model {
 	}
 
 	return Model{
-		sessions: []session.Info{},
-		cursor:   0,
-		width:    80,
-		height:   24,
-		Remotes:  remotes,
-		SSHPool:  sshPool,
+		sessions:    []session.Info{},
+		cursor:      0,
+		width:       80,
+		height:      24,
+		Remotes:     remotes,
+		SSHPool:     sshPool,
+		sortMode:    SortPriority,
+		searchInput: initSearchInput(),
 	}
 }
