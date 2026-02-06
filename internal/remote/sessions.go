@@ -72,7 +72,13 @@ func PollSingleRemote(pool *SSHPool, remote Config) ([]session.Info, error) {
 		sessionsDir = DefaultSessionsDir
 	}
 
-	cmd := fmt.Sprintf("cat '%s'/*.json 2>/dev/null || true", strings.ReplaceAll(sessionsDir, "'", "'\\''"))
+	// Expand ~ on the remote side since single-quoting prevents shell tilde expansion.
+	// Use $HOME instead of ~ so it works inside quotes.
+	if strings.HasPrefix(sessionsDir, "~/") {
+		sessionsDir = "$HOME" + sessionsDir[1:]
+	}
+
+	cmd := fmt.Sprintf("cat \"%s\"/*.json 2>/dev/null || true", strings.ReplaceAll(sessionsDir, "\"", "\\\""))
 
 	debug.Log("remote[%s]: executing command: %s", remote.Name, cmd)
 
