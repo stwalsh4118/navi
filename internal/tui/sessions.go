@@ -321,6 +321,15 @@ func fetchPRCmd(cwd string) tea.Cmd {
 	}
 }
 
+// fetchRemotePRCmd returns a command that fetches PR info using branch and remote URL
+// instead of a local directory. Used for remote sessions where the CWD doesn't exist locally.
+func fetchRemotePRCmd(cwd, branch, remoteURL string) tea.Cmd {
+	return func() tea.Msg {
+		prNum := git.GetPRNumberByRepo(branch, remoteURL)
+		return gitPRMsg{cwd: cwd, prNum: prNum}
+	}
+}
+
 // pollSessions orchestrates reading, cleaning stale, and sorting sessions.
 // Returns a sessionsMsg with the current session list.
 func pollSessions() tea.Msg {

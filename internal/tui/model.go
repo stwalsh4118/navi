@@ -349,7 +349,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if s.Remote != "" && m.SSHPool != nil {
 					if cached, ok := m.gitCache[s.CWD]; ok && !cached.IsStale() {
 						m.sessionToModify.Git = cached
-						return m, fetchPRCmd(s.CWD)
+						return m, fetchRemotePRCmd(s.CWD, cached.Branch, cached.Remote)
 					}
 					return m, fetchRemoteGitCmd(m.SSHPool, s.Remote, s.CWD)
 				}
@@ -671,8 +671,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 
-			// Trigger PR fetch using the remote URL and local gh CLI
-			return m, fetchPRCmd(msg.cwd)
+			// Trigger PR fetch using the branch and remote URL via gh -R flag
+			return m, fetchRemotePRCmd(msg.cwd, msg.info.Branch, msg.info.Remote)
 		}
 		return m, nil
 	}
