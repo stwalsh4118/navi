@@ -3,6 +3,7 @@ package remote
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"time"
@@ -91,6 +92,8 @@ func PollSingleRemote(pool *SSHPool, remote Config) ([]session.Info, error) {
 }
 
 // ParseSessionOutput parses concatenated JSON session data from remote output.
+// The output from `cat *.json` produces concatenated top-level JSON objects
+// (not an array), so we use Decoder.Decode in a loop until io.EOF.
 func ParseSessionOutput(output string, remoteName string) []session.Info {
 	if strings.TrimSpace(output) == "" {
 		return nil
@@ -100,48 +103,17 @@ func ParseSessionOutput(output string, remoteName string) []session.Info {
 
 	decoder := json.NewDecoder(strings.NewReader(output))
 
-	for decoder.More() {
+	for {
 		var s session.Info
 		if err := decoder.Decode(&s); err != nil {
+			if err == io.EOF {
+				break
+			}
+			debug.Log("remote[%s]: skipping malformed JSON object: %v", remoteName, err)
 			break
 		}
 		s.Remote = remoteName
 		sessions = append(sessions, s)
-	}
-
-	if len(sessions) == 0 {
-		sessions = ParseMultipleJSONObjects(output, remoteName)
-	}
-
-	return sessions
-}
-
-// ParseMultipleJSONObjects handles the case where multiple JSON files are concatenated.
-func ParseMultipleJSONObjects(output string, remoteName string) []session.Info {
-	var sessions []session.Info
-
-	depth := 0
-	start := -1
-
-	for i, ch := range output {
-		switch ch {
-		case '{':
-			if depth == 0 {
-				start = i
-			}
-			depth++
-		case '}':
-			depth--
-			if depth == 0 && start >= 0 {
-				jsonStr := output[start : i+1]
-				var s session.Info
-				if err := json.Unmarshal([]byte(jsonStr), &s); err == nil {
-					s.Remote = remoteName
-					sessions = append(sessions, s)
-				}
-				start = -1
-			}
-		}
 	}
 
 	return sessions

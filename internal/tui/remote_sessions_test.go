@@ -85,27 +85,40 @@ func TestParseRemoteSessionOutput(t *testing.T) {
 	})
 }
 
-func TestParseMultipleJSONObjects(t *testing.T) {
+func TestParseSessionOutputConcatenated(t *testing.T) {
 	t.Run("parses concatenated objects without delimiters", func(t *testing.T) {
-		output := `{"name":"a"}{"name":"b"}{"name":"c"}`
+		output := `{"tmux_session":"a"}{"tmux_session":"b"}{"tmux_session":"c"}`
 
-		sessions := remote.ParseMultipleJSONObjects(output, "test")
+		sessions := remote.ParseSessionOutput(output, "test")
 
 		if len(sessions) != 3 {
 			t.Errorf("expected 3 objects, got %d", len(sessions))
 		}
 	})
 
-	t.Run("handles nested braces correctly", func(t *testing.T) {
+	t.Run("handles nested JSON correctly", func(t *testing.T) {
 		output := `{"tmux_session":"test","git":{"branch":"main","dirty":true}}`
 
-		sessions := remote.ParseMultipleJSONObjects(output, "test")
+		sessions := remote.ParseSessionOutput(output, "test")
 
 		if len(sessions) != 1 {
 			t.Errorf("expected 1 object, got %d", len(sessions))
 		}
 		if sessions[0].TmuxSession != "test" {
 			t.Errorf("session name = %v, want test", sessions[0].TmuxSession)
+		}
+	})
+
+	t.Run("handles braces inside JSON string values", func(t *testing.T) {
+		output := `{"tmux_session":"test","message":"found {issue} in code"}`
+
+		sessions := remote.ParseSessionOutput(output, "test")
+
+		if len(sessions) != 1 {
+			t.Errorf("expected 1 object, got %d", len(sessions))
+		}
+		if sessions[0].Message != "found {issue} in code" {
+			t.Errorf("message = %v, want 'found {issue} in code'", sessions[0].Message)
 		}
 	})
 }
