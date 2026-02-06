@@ -377,6 +377,12 @@ func TestE2E_PBI27_AC5_DismissRemote(t *testing.T) {
 	})
 
 	t.Run("d key on local session does not use remote dismiss", func(t *testing.T) {
+		// Use temp dir to avoid writing to real sessions directory
+		tmpDir := t.TempDir()
+		origDir := session.StatusDir
+		session.StatusDir = tmpDir
+		t.Cleanup(func() { session.StatusDir = origDir })
+
 		m := newRemoteActionsTestModel()
 		m.cursor = 0 // local session
 
