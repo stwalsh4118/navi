@@ -56,12 +56,12 @@ type Model struct {
 	filterMode session.FilterMode // Current session filter mode
 
 	// Search and filter state
-	searchQuery string          // Current search text
-	searchMode  bool            // Whether search input is active
-	searchInput textinput.Model // Text input for search
-	statusFilter string         // Active status filter (empty = show all)
-	showOffline  bool           // Whether to show offline/done sessions
-	sortMode     SortMode       // Active sort mode
+	searchQuery  string          // Current search text
+	searchMode   bool            // Whether search input is active
+	searchInput  textinput.Model // Text input for search
+	statusFilter string          // Active status filter (empty = show all)
+	hideOffline  bool            // Whether to hide offline/done sessions (default false = show all)
+	sortMode     SortMode        // Active sort mode
 }
 
 // Message types for Bubble Tea communication.
@@ -380,6 +380,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.dialogError = ""
 				return m, nil
 			}
+			return m, nil
+
+		case "s":
+			// Cycle sort mode: Priority -> Name -> Age -> Status -> Directory -> Priority
+			m.sortMode = (m.sortMode + 1) % SortMode(sortModeCount)
 			return m, nil
 
 		case "f":
@@ -964,26 +969,49 @@ func (m *Model) closeDialog() {
 	m.dialogError = ""
 }
 
-// getFilteredSessions returns sessions filtered by the current filter mode.
+// getFilteredSessions returns sessions filtered and sorted by all active filters.
+// Pipeline: local/remote filter → status filter → offline filter → fuzzy search → sort.
 func (m Model) getFilteredSessions() []session.Info {
-	if m.filterMode == session.FilterAll {
-		return m.sessions
-	}
+	// Start with all sessions
+	result := m.sessions
 
-	var filtered []session.Info
-	for _, s := range m.sessions {
-		switch m.filterMode {
-		case session.FilterLocal:
-			if s.Remote == "" {
-				filtered = append(filtered, s)
-			}
-		case session.FilterRemote:
-			if s.Remote != "" {
-				filtered = append(filtered, s)
+	// Step 1: Local/Remote filter
+	if m.filterMode != session.FilterAll {
+		var filtered []session.Info
+		for _, s := range result {
+			switch m.filterMode {
+			case session.FilterLocal:
+				if s.Remote == "" {
+					filtered = append(filtered, s)
+				}
+			case session.FilterRemote:
+				if s.Remote != "" {
+					filtered = append(filtered, s)
+				}
 			}
 		}
+		result = filtered
 	}
-	return filtered
+
+	// Step 2: Status filter
+	if m.statusFilter != "" {
+		result = filterByStatus(result, m.statusFilter)
+	}
+
+	// Step 3: Offline filter
+	if m.hideOffline {
+		result = filterOffline(result)
+	}
+
+	// Step 4: Fuzzy search
+	if m.searchQuery != "" {
+		result = fuzzyFilter(result, m.searchQuery)
+	}
+
+	// Step 5: Sort
+	result = sortSessions(result, m.sortMode)
+
+	return result
 }
 
 // filterModeString returns a display string for the current filter mode.
@@ -1021,7 +1049,6 @@ func InitialModel() Model {
 		height:      24,
 		Remotes:     remotes,
 		SSHPool:     sshPool,
-		showOffline: true,
 		sortMode:    SortPriority,
 		searchInput: initSearchInput(),
 	}

@@ -60,8 +60,10 @@ var statusOrder = map[string]int{
 
 // sortSessions returns a sorted copy of the sessions slice according to the given mode.
 // The original slice is not modified.
+// For SortPriority, sessions are returned as-is since they are already sorted
+// by session.SortSessions() during polling.
 func sortSessions(sessions []session.Info, mode SortMode) []session.Info {
-	if len(sessions) <= 1 {
+	if len(sessions) <= 1 || mode == SortPriority {
 		return sessions
 	}
 
@@ -70,9 +72,6 @@ func sortSessions(sessions []session.Info, mode SortMode) []session.Info {
 	copy(sorted, sessions)
 
 	switch mode {
-	case SortPriority:
-		session.SortSessions(sorted)
-
 	case SortName:
 		sort.SliceStable(sorted, func(i, j int) bool {
 			return strings.ToLower(sorted[i].TmuxSession) < strings.ToLower(sorted[j].TmuxSession)
