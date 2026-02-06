@@ -71,7 +71,7 @@ func PollSingleRemote(pool *SSHPool, remote Config) ([]session.Info, error) {
 		sessionsDir = DefaultSessionsDir
 	}
 
-	cmd := fmt.Sprintf("cat %s/*.json 2>/dev/null || true", sessionsDir)
+	cmd := fmt.Sprintf("cat '%s'/*.json 2>/dev/null || true", strings.ReplaceAll(sessionsDir, "'", "'\\''"))
 
 	debug.Log("remote[%s]: executing command: %s", remote.Name, cmd)
 

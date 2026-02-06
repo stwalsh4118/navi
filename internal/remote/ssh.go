@@ -2,7 +2,6 @@ package remote
 
 import (
 	"fmt"
-	"net"
 	"os"
 	"sync"
 	"time"
@@ -65,9 +64,10 @@ func NewSSHPool(remotes []Config) *SSHPool {
 		status:  make(map[string]*RemoteStatus),
 	}
 
-	for i := range remotes {
-		pool.remotes[remotes[i].Name] = &remotes[i]
-		pool.status[remotes[i].Name] = &RemoteStatus{
+	for _, r := range remotes {
+		rCopy := r
+		pool.remotes[rCopy.Name] = &rCopy
+		pool.status[rCopy.Name] = &RemoteStatus{
 			Status: StatusDisconnected,
 		}
 	}
@@ -348,5 +348,3 @@ func LoadSSHKey(keyPath string) (ssh.Signer, error) {
 	return signer, nil
 }
 
-// Ensure we use the net package to avoid import errors
-var _ = net.Dial
