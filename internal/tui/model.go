@@ -411,38 +411,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "o":
 			// Toggle offline session visibility
+			selectedSession := m.selectedSessionName()
 			m.hideOffline = !m.hideOffline
-			// Clamp cursor for new filtered list
-			filteredSessions := m.getFilteredSessions()
-			if m.cursor >= len(filteredSessions) {
-				if len(filteredSessions) > 0 {
-					m.cursor = len(filteredSessions) - 1
-				} else {
-					m.cursor = 0
-				}
-			}
+			m.preserveCursor(selectedSession)
 			return m, nil
 
 		case "0":
 			// Clear status filter
+			selectedSession := m.selectedSessionName()
 			m.statusFilter = ""
-			m.cursor = 0
+			m.preserveCursor(selectedSession)
 			return m, nil
 
 		case "1", "2", "3", "4", "5":
 			// Toggle status filter by number key
+			selectedSession := m.selectedSessionName()
 			targetStatus := statusFilterKeys[msg.String()]
 			if m.statusFilter == targetStatus {
 				m.statusFilter = "" // Toggle off if same key pressed
 			} else {
 				m.statusFilter = targetStatus
 			}
-			m.cursor = 0
+			m.preserveCursor(selectedSession)
 			return m, nil
 
 		case "f":
 			// Cycle filter mode: All -> Local -> Remote -> All
 			if len(m.Remotes) > 0 {
+				selectedSession := m.selectedSessionName()
 				switch m.filterMode {
 				case session.FilterAll:
 					m.filterMode = session.FilterLocal
@@ -451,15 +447,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case session.FilterRemote:
 					m.filterMode = session.FilterAll
 				}
-				// Adjust cursor for new filtered list
-				filteredSessions := m.getFilteredSessions()
-				if m.cursor >= len(filteredSessions) {
-					if len(filteredSessions) > 0 {
-						m.cursor = len(filteredSessions) - 1
-					} else {
-						m.cursor = 0
-					}
-				}
+				m.preserveCursor(selectedSession)
 			}
 			return m, nil
 
@@ -1084,6 +1072,37 @@ func (m Model) updateSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, cmd
+}
+
+// selectedSessionName returns the name of the currently selected session, or empty string.
+func (m Model) selectedSessionName() string {
+	filtered := m.getFilteredSessions()
+	if m.cursor < len(filtered) {
+		return filtered[m.cursor].TmuxSession
+	}
+	return ""
+}
+
+// preserveCursor attempts to keep the cursor on the same session after a filter change.
+// If the session is no longer in the filtered list, cursor resets to 0.
+func (m *Model) preserveCursor(sessionName string) {
+	if sessionName == "" {
+		m.cursor = 0
+		return
+	}
+	filtered := m.getFilteredSessions()
+	for i, s := range filtered {
+		if s.TmuxSession == sessionName {
+			m.cursor = i
+			return
+		}
+	}
+	// Session not found in new filtered list
+	if len(filtered) > 0 && m.cursor >= len(filtered) {
+		m.cursor = len(filtered) - 1
+	} else if len(filtered) == 0 {
+		m.cursor = 0
+	}
 }
 
 // closeDialog resets dialog state.

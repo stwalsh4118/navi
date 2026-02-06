@@ -34,6 +34,12 @@ func (m Model) View() string {
 	b.WriteString(m.renderHeader())
 	b.WriteString("\n\n")
 
+	// Search bar (when active)
+	if m.searchMode {
+		b.WriteString(m.renderSearchBar())
+		b.WriteString("\n")
+	}
+
 	// Calculate available height for content area
 	// Header (3 lines) + Footer (3 lines) + spacing
 	contentHeight := m.height - 8
@@ -331,12 +337,12 @@ func (m Model) renderHeader() string {
 	return boxStyle.Width(m.width - 2).Render(content)
 }
 
-// renderFooter renders the footer box with keybinding help.
+// renderFooter renders the footer box with keybinding help and filter/sort status.
 func (m Model) renderFooter() string {
 	var parts []string
 
 	// Always show these
-	parts = append(parts, "↑/↓ nav", "⏎ attach", "p preview")
+	parts = append(parts, "↑/↓ nav", "⏎ attach", "/ search", "p preview")
 
 	// Show preview-specific keys only when preview is visible
 	if m.previewVisible {
@@ -355,6 +361,36 @@ func (m Model) renderFooter() string {
 	parts = append(parts, "r refresh", "q quit")
 
 	footerHelp := strings.Join(parts, "  ")
+
+	// Build status line with active filter/sort/search state
+	var statusParts []string
+
+	if m.statusFilter != "" {
+		statusParts = append(statusParts, filterActiveStyle.Render("Filter: "+m.statusFilter))
+	}
+
+	if m.hideOffline {
+		statusParts = append(statusParts, filterActiveStyle.Render("Offline: hidden"))
+	}
+
+	if m.sortMode != SortPriority {
+		statusParts = append(statusParts, filterActiveStyle.Render("Sort: "+SortModeLabel(m.sortMode)))
+	}
+
+	// Show filtered count vs total when any filter/search is active
+	filteredCount := len(m.getFilteredSessions())
+	totalCount := len(m.sessions)
+	if filteredCount != totalCount {
+		countStr := fmt.Sprintf("%d/%d shown", filteredCount, totalCount)
+		statusParts = append(statusParts, filterActiveStyle.Render(countStr))
+	}
+
+	// Key hints for new features on the status line
+	statusParts = append(statusParts, dimStyle.Render("s:sort  1-5:filter  o:offline  0:clear"))
+
+	statusLine := strings.Join(statusParts, "  ")
+	footerHelp = footerHelp + "\n" + statusLine
+
 	return boxStyle.Width(m.width - 2).Render(footerHelp)
 }
 
@@ -438,6 +474,12 @@ func (m Model) renderPreview(width, height int) string {
 	return strings.Join(renderedLines, "\n")
 }
 
+// renderSearchBar renders the search input bar when search mode is active.
+func (m Model) renderSearchBar() string {
+	content := "/ " + m.searchInput.View()
+	return searchBarStyle.Width(m.width - 2).Render(content)
+}
+
 // renderSessionList renders the session list portion of the view.
 func (m Model) renderSessionList(width int) string {
 	var b strings.Builder
@@ -448,6 +490,10 @@ func (m Model) renderSessionList(width int) string {
 		var message string
 		if len(m.sessions) == 0 {
 			message = noSessionsMessage
+		} else if m.searchQuery != "" {
+			message = fmt.Sprintf("  No sessions matching \"%s\"", m.searchQuery)
+		} else if m.statusFilter != "" {
+			message = fmt.Sprintf("  No %s sessions", m.statusFilter)
 		} else {
 			message = fmt.Sprintf("  No %s sessions", m.filterModeString())
 		}
