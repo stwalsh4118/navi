@@ -14,6 +14,7 @@ import (
 	"github.com/stwalsh4118/navi/internal/git"
 	"github.com/stwalsh4118/navi/internal/metrics"
 	"github.com/stwalsh4118/navi/internal/pathutil"
+	"github.com/stwalsh4118/navi/internal/remote"
 	"github.com/stwalsh4118/navi/internal/session"
 	"github.com/stwalsh4118/navi/internal/tokens"
 )
@@ -192,6 +193,70 @@ func pollGitInfoCmd(sessions []session.Info) tea.Cmd {
 		}
 
 		return gitInfoMsg{cache: cache}
+	}
+}
+
+// killRemoteSessionCmd returns a command that kills a remote tmux session via SSH.
+func killRemoteSessionCmd(pool *remote.SSHPool, remoteName, sessionName string) tea.Cmd {
+	return func() tea.Msg {
+		config := pool.GetRemoteConfig(remoteName)
+		if config == nil {
+			return killSessionResultMsg{err: fmt.Errorf("remote %q not found", remoteName)}
+		}
+		err := remote.KillSession(pool, remoteName, sessionName, config.SessionsDir)
+		return killSessionResultMsg{err: err}
+	}
+}
+
+// renameRemoteSessionCmd returns a command that renames a remote tmux session via SSH.
+func renameRemoteSessionCmd(pool *remote.SSHPool, remoteName, oldName, newName string) tea.Cmd {
+	return func() tea.Msg {
+		config := pool.GetRemoteConfig(remoteName)
+		if config == nil {
+			return renameSessionResultMsg{err: fmt.Errorf("remote %q not found", remoteName), newName: newName}
+		}
+		err := remote.RenameSession(pool, remoteName, oldName, newName, config.SessionsDir)
+		return renameSessionResultMsg{err: err, newName: newName}
+	}
+}
+
+// dismissRemoteSessionCmd returns a command that dismisses a remote session via SSH.
+func dismissRemoteSessionCmd(pool *remote.SSHPool, remoteName, sessionName string) tea.Cmd {
+	return func() tea.Msg {
+		config := pool.GetRemoteConfig(remoteName)
+		if config == nil {
+			return remoteDismissResultMsg{err: fmt.Errorf("remote %q not found", remoteName)}
+		}
+		err := remote.DismissSession(pool, remoteName, sessionName, config.SessionsDir)
+		return remoteDismissResultMsg{err: err}
+	}
+}
+
+// captureRemotePreviewCmd returns a command that captures preview content from a remote tmux session via SSH.
+func captureRemotePreviewCmd(pool *remote.SSHPool, remoteName, sessionName string) tea.Cmd {
+	return func() tea.Msg {
+		content, err := remote.CapturePane(pool, remoteName, sessionName, previewDefaultLines)
+		if err != nil {
+			return previewContentMsg{content: "Failed to fetch remote preview: " + err.Error()}
+		}
+		return previewContentMsg{content: content}
+	}
+}
+
+// capturePreviewForSession returns the appropriate capture command for the given session.
+// Uses SSH for remote sessions and local tmux for local sessions.
+func (m Model) capturePreviewForSession(s session.Info) tea.Cmd {
+	if s.Remote != "" && m.SSHPool != nil {
+		return captureRemotePreviewCmd(m.SSHPool, s.Remote, s.TmuxSession)
+	}
+	return capturePreviewCmd(s.TmuxSession)
+}
+
+// fetchRemoteGitCmd returns a command that fetches git info from a remote session via SSH.
+func fetchRemoteGitCmd(pool *remote.SSHPool, remoteName, cwd string) tea.Cmd {
+	return func() tea.Msg {
+		info, err := remote.FetchGitInfo(pool, remoteName, cwd)
+		return remoteGitInfoMsg{cwd: cwd, info: info, err: err}
 	}
 }
 
