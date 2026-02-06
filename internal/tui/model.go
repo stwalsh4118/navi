@@ -54,6 +54,14 @@ type Model struct {
 	Remotes    []remote.Config // Configured remote machines
 	SSHPool    *remote.SSHPool // SSH connection pool for remotes
 	filterMode session.FilterMode // Current session filter mode
+
+	// Search and filter state
+	searchQuery string          // Current search text
+	searchMode  bool            // Whether search input is active
+	searchInput textinput.Model // Text input for search
+	statusFilter string         // Active status filter (empty = show all)
+	showOffline  bool           // Whether to show offline/done sessions
+	sortMode     SortMode       // Active sort mode
 }
 
 // Message types for Bubble Tea communication.
@@ -1007,11 +1015,14 @@ func InitialModel() Model {
 	}
 
 	return Model{
-		sessions: []session.Info{},
-		cursor:   0,
-		width:    80,
-		height:   24,
-		Remotes:  remotes,
-		SSHPool:  sshPool,
+		sessions:    []session.Info{},
+		cursor:      0,
+		width:       80,
+		height:      24,
+		Remotes:     remotes,
+		SSHPool:     sshPool,
+		showOffline: true,
+		sortMode:    SortPriority,
+		searchInput: initSearchInput(),
 	}
 }
