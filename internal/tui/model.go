@@ -448,7 +448,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.cursor = i
 					m.lastSelectedSession = "" // Clear after restoring
 					if needsGitPoll {
-						return m, pollGitInfoCmd(m.sessions)
+						return m, m.pollAllGitInfoCmd()
 					}
 					return m, nil
 				}
@@ -464,7 +464,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if needsGitPoll {
-			return m, pollGitInfoCmd(m.sessions)
+			return m, m.pollAllGitInfoCmd()
 		}
 
 	case remoteSessionsMsg:
@@ -602,7 +602,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, gitTickCmd()
 		}
 		// Poll git info for all sessions and schedule next tick
-		return m, tea.Batch(pollGitInfoCmd(m.sessions), gitTickCmd())
+		return m, tea.Batch(m.pollAllGitInfoCmd(), gitTickCmd())
 
 	case gitInfoMsg:
 		// Initialize cache if nil
@@ -672,6 +672,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // Empty state message constant
+// pollAllGitInfoCmd returns a batched command that polls git info for both local and remote sessions.
+func (m Model) pollAllGitInfoCmd() tea.Cmd {
+	local := pollGitInfoCmd(m.sessions)
+	if m.SSHPool != nil {
+		remotePoll := pollRemoteGitInfoCmd(m.SSHPool, m.sessions)
+		if remotePoll != nil {
+			return tea.Batch(local, remotePoll)
+		}
+	}
+	return local
+}
+
 const noSessionsMessage = "  No active sessions"
 
 // getPreviewWidth returns the width to use for the preview pane (side layout).

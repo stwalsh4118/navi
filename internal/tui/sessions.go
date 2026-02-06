@@ -152,14 +152,15 @@ func gitTickCmd() tea.Cmd {
 	})
 }
 
-// pollGitInfoCmd returns a command that polls git info for all session working directories.
-// Git info is fetched concurrently for all sessions to minimize latency.
+// pollGitInfoCmd returns a command that polls git info for local session working directories.
+// Git info is fetched concurrently for all local sessions to minimize latency.
+// Remote sessions are handled separately by pollRemoteGitInfoCmd.
 func pollGitInfoCmd(sessions []session.Info) tea.Cmd {
 	return func() tea.Msg {
-		// Collect unique CWDs to avoid duplicate work
+		// Collect unique CWDs from local sessions only
 		cwds := make(map[string]bool)
 		for _, s := range sessions {
-			if s.CWD != "" {
+			if s.CWD != "" && s.Remote == "" {
 				cwds[s.CWD] = true
 			}
 		}
@@ -186,6 +187,56 @@ func pollGitInfoCmd(sessions []session.Info) tea.Cmd {
 		// Collect results
 		cache := make(map[string]*git.Info)
 		for i := 0; i < len(cwds); i++ {
+			r := <-results
+			if r.info != nil {
+				cache[r.cwd] = r.info
+			}
+		}
+
+		return gitInfoMsg{cache: cache}
+	}
+}
+
+// pollRemoteGitInfoCmd returns a command that polls git info for remote sessions via SSH.
+// It fetches git info concurrently for all unique remote+CWD combinations.
+func pollRemoteGitInfoCmd(pool *remote.SSHPool, sessions []session.Info) tea.Cmd {
+	// Collect unique remote+CWD pairs
+	type remoteKey struct {
+		remote string
+		cwd    string
+	}
+	seen := make(map[remoteKey]bool)
+	var keys []remoteKey
+	for _, s := range sessions {
+		if s.Remote != "" && s.CWD != "" {
+			k := remoteKey{remote: s.Remote, cwd: s.CWD}
+			if !seen[k] {
+				seen[k] = true
+				keys = append(keys, k)
+			}
+		}
+	}
+
+	if len(keys) == 0 {
+		return nil
+	}
+
+	return func() tea.Msg {
+		type result struct {
+			cwd  string
+			info *git.Info
+		}
+		results := make(chan result, len(keys))
+
+		for _, k := range keys {
+			go func(remoteName, cwd string) {
+				info, _ := remote.FetchGitInfo(pool, remoteName, cwd)
+				results <- result{cwd: cwd, info: info}
+			}(k.remote, k.cwd)
+		}
+
+		cache := make(map[string]*git.Info)
+		for i := 0; i < len(keys); i++ {
 			r := <-results
 			if r.info != nil {
 				cache[r.cwd] = r.info
