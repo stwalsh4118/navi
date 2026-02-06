@@ -147,7 +147,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateDialog(msg)
 		}
 
-		// Main keybindings (only when no dialog is open)
+		// Handle search mode - forward most keys to search input
+		if m.searchMode {
+			return m.updateSearchMode(msg)
+		}
+
+		// Main keybindings (only when no dialog is open and not in search mode)
 		switch msg.String() {
 		case "up", "k":
 			filteredSessions := m.getFilteredSessions()
@@ -378,6 +383,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.sessionToModify = &s
 				m.dialogMode = DialogMetricsDetail
 				m.dialogError = ""
+				return m, nil
+			}
+			return m, nil
+
+		case "/":
+			// Enter search mode
+			m.searchMode = true
+			m.searchInput.SetValue("")
+			m.searchInput.Focus()
+			return m, nil
+
+		case "esc":
+			// Clear active filters
+			if m.statusFilter != "" || m.hideOffline {
+				m.statusFilter = ""
+				m.hideOffline = false
+				m.cursor = 0
 				return m, nil
 			}
 			return m, nil
@@ -992,6 +1014,76 @@ func (m Model) openGitLink() (tea.Model, tea.Cmd) {
 	m.dialogError = ""
 	m.sessionToModify = nil
 	return m, nil
+}
+
+// updateSearchMode handles key messages when search mode is active.
+// Navigation keys (up/down/enter) still work; other keys go to the search input.
+func (m Model) updateSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		// Clear search and exit search mode
+		m.searchMode = false
+		m.searchQuery = ""
+		m.searchInput.SetValue("")
+		m.searchInput.Blur()
+		m.cursor = 0
+		return m, nil
+
+	case "up", "k":
+		filteredSessions := m.getFilteredSessions()
+		if len(filteredSessions) > 0 {
+			if m.cursor > 0 {
+				m.cursor--
+			} else {
+				m.cursor = len(filteredSessions) - 1
+			}
+		}
+		return m, nil
+
+	case "down", "j":
+		filteredSessions := m.getFilteredSessions()
+		if len(filteredSessions) > 0 {
+			if m.cursor < len(filteredSessions)-1 {
+				m.cursor++
+			} else {
+				m.cursor = 0
+			}
+		}
+		return m, nil
+
+	case "enter":
+		filteredSessions := m.getFilteredSessions()
+		if len(filteredSessions) > 0 && m.cursor < len(filteredSessions) {
+			s := filteredSessions[m.cursor]
+			m.lastSelectedSession = s.TmuxSession
+
+			if s.Remote != "" && m.SSHPool != nil {
+				r := m.SSHPool.GetRemoteConfig(s.Remote)
+				if r != nil {
+					return m, attachRemoteSession(r, s.TmuxSession)
+				}
+			}
+			return m, attachSession(s.TmuxSession)
+		}
+		return m, nil
+	}
+
+	// Forward all other keys to search input
+	var cmd tea.Cmd
+	m.searchInput, cmd = m.searchInput.Update(msg)
+	m.searchQuery = m.searchInput.Value()
+
+	// Clamp cursor after search query change
+	filteredSessions := m.getFilteredSessions()
+	if m.cursor >= len(filteredSessions) {
+		if len(filteredSessions) > 0 {
+			m.cursor = len(filteredSessions) - 1
+		} else {
+			m.cursor = 0
+		}
+	}
+
+	return m, cmd
 }
 
 // closeDialog resets dialog state.
