@@ -28,6 +28,11 @@ func (m Model) View() string {
 		return fmt.Sprintf("Error: %v\n\nPress q to quit.", m.err)
 	}
 
+	// Full-screen overlay: content viewer replaces the entire view
+	if m.dialogMode == DialogContentViewer {
+		return m.renderContentViewer()
+	}
+
 	var b strings.Builder
 
 	// Header
@@ -642,90 +647,6 @@ func (m Model) renderGitDetailView() string {
 	return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, dialog)
 }
 
-// renderGitDiffView renders the git diff view dialog.
-func (m Model) renderGitDiffView() string {
-	var b strings.Builder
-
-	// Title
-	b.WriteString(dialogTitleStyle.Render("Git Changes"))
-	b.WriteString("\n\n")
-
-	if m.sessionToModify == nil || m.sessionToModify.Git == nil {
-		b.WriteString(dimStyle.Render("No git information available"))
-		b.WriteString("\n\n")
-		b.WriteString(dimStyle.Render("Esc: back"))
-		content := b.String()
-		dialog := dialogBoxStyle.Width(gitDetailWidth).Render(content)
-		return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, dialog)
-	}
-
-	s := m.sessionToModify
-	g := s.Git
-
-	// Show branch and dirty status
-	b.WriteString(fmt.Sprintf("Branch: %s", cyanStyle.Render(g.Branch)))
-	if g.Dirty {
-		b.WriteString(fmt.Sprintf(" %s", yellowStyle.Render(git.DirtyIndicator)))
-	}
-	b.WriteString("\n\n")
-
-	// Get diff stat
-	dir := pathutil.ExpandPath(s.CWD)
-	diffStat := git.GetDiffStat(dir)
-
-	if diffStat == "" {
-		if g.Dirty {
-			// Dirty but no diff - might be staged changes only
-			b.WriteString(dimStyle.Render("No unstaged changes (changes may be staged)"))
-		} else {
-			b.WriteString(greenStyle.Render("Working tree clean - no changes"))
-		}
-	} else {
-		// Show the diff stat output
-		b.WriteString(boldStyle.Render("Changed files:"))
-		b.WriteString("\n")
-
-		// Split and render each line of diff stat
-		lines := strings.Split(diffStat, "\n")
-		maxDisplayLines := 20 // Limit lines to keep dialog manageable
-		displayLines := lines
-		if len(lines) > maxDisplayLines {
-			displayLines = lines[:maxDisplayLines-1]
-			displayLines = append(displayLines, dimStyle.Render(fmt.Sprintf("... and %d more files", len(lines)-maxDisplayLines+1)))
-		}
-
-		for _, line := range displayLines {
-			// Color insertions green, deletions red
-			if strings.Contains(line, "|") {
-				// File stat line: "filename | 10 ++--"
-				parts := strings.SplitN(line, "|", 2)
-				if len(parts) == 2 {
-					filename := parts[0]
-					stats := parts[1]
-					// Color the + and - characters
-					stats = strings.ReplaceAll(stats, "+", greenStyle.Render("+"))
-					stats = strings.ReplaceAll(stats, "-", redStyle.Render("-"))
-					b.WriteString(fmt.Sprintf("%s|%s\n", filename, stats))
-				} else {
-					b.WriteString(line + "\n")
-				}
-			} else if strings.Contains(line, "insertion") || strings.Contains(line, "deletion") {
-				// Summary line
-				b.WriteString(dimStyle.Render(line) + "\n")
-			} else {
-				b.WriteString(line + "\n")
-			}
-		}
-	}
-
-	b.WriteString("\n")
-	b.WriteString(dimStyle.Render("Esc: back to git info"))
-
-	content := b.String()
-	dialog := dialogBoxStyle.Width(gitDetailWidth).Render(content)
-	return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, dialog)
-}
-
 // metricsDetailWidth is the width of the metrics detail dialog
 const metricsDetailWidth = 60
 
@@ -925,12 +846,12 @@ func (m Model) renderDialog() string {
 	case DialogGitDetail:
 		b.Reset() // Clear the builder for custom git view
 		return m.renderGitDetailView()
-	case DialogGitDiff:
-		b.Reset() // Clear the builder for custom diff view
-		return m.renderGitDiffView()
 	case DialogMetricsDetail:
 		b.Reset() // Clear the builder for custom metrics view
 		return m.renderMetricsDetailView()
+	case DialogContentViewer:
+		b.Reset() // Clear the builder for content viewer
+		return m.renderContentViewer()
 	}
 
 	// Error message if present

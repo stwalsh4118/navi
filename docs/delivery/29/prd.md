@@ -60,6 +60,6 @@ A reusable content viewer component would unify these use cases and enable futur
 
 ## Related Tasks
 
-See [tasks.md](./tasks.md) when tasks are created.
+[View Tasks](./tasks.md)
 
 [View in Backlog](../backlog.md#user-content-29)

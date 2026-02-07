@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -82,6 +83,13 @@ type Model struct {
 	taskCache           *task.ResultCache               // Cache for provider results
 	taskGlobalConfig    *task.GlobalConfig              // Global task config
 	taskLastCWDs        []string                        // Last seen session CWDs (for change detection)
+
+	// Content viewer state
+	contentViewerTitle      string     // Title displayed in the content viewer header
+	contentViewerLines      []string   // Content split into lines for scrolling
+	contentViewerScroll     int        // Current scroll offset (line index of first visible line)
+	contentViewerMode       ContentMode // Content type (plain text or diff)
+	contentViewerPrevDialog DialogMode // Dialog to return to when closing (DialogNone if standalone)
 }
 
 // Message types for Bubble Tea communication.
@@ -970,6 +978,28 @@ func (m Model) updateTaskPanelFocus(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.moveTaskCursor(1)
 		return m, nil
 
+	case "enter":
+		// Open task detail or toggle group
+		item := m.getSelectedTaskItem()
+		if item == nil {
+			return m, nil
+		}
+		if item.isGroup {
+			// Toggle group expansion (same as space)
+			if m.taskExpandedGroups[item.groupID] {
+				delete(m.taskExpandedGroups, item.groupID)
+			} else {
+				m.taskExpandedGroups[item.groupID] = true
+			}
+			items := m.getVisibleTaskItems()
+			if m.taskCursor >= len(items) && len(items) > 0 {
+				m.taskCursor = len(items) - 1
+			}
+			return m, nil
+		}
+		// Task item: open URL externally or file in content viewer
+		return m.openTaskDetail(item)
+
 	case " ":
 		// Toggle group expansion
 		item := m.getSelectedTaskItem()
@@ -999,6 +1029,37 @@ func (m Model) updateTaskPanelFocus(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 
+	return m, nil
+}
+
+// openTaskDetail handles Enter on a task item: opens URL externally or file in content viewer.
+func (m Model) openTaskDetail(item *taskItem) (tea.Model, tea.Cmd) {
+	// Tasks with a URL: open externally
+	if item.url != "" {
+		if err := git.OpenURL(item.url); err != nil {
+			m.dialogError = "Failed to open URL: " + err.Error()
+		}
+		return m, nil
+	}
+
+	// Local markdown tasks: derive file path from project dir and task ID
+	if m.taskFocusedProject == "" {
+		return m, nil
+	}
+
+	// Task file path: <projectDir>/docs/delivery/<pbi-num>/<taskID>.md
+	// Extract PBI number from group ID (e.g. "PBI-29" -> "29")
+	pbiNum := strings.TrimPrefix(item.groupID, "PBI-")
+	taskFilePath := filepath.Join(m.taskFocusedProject, "docs", "delivery", pbiNum, item.taskID+".md")
+
+	content, err := os.ReadFile(taskFilePath)
+	if err != nil {
+		// Show error in content viewer
+		m.openContentViewer("Error", fmt.Sprintf("Could not read file:\n%s\n\nError: %s", taskFilePath, err.Error()), ContentModePlain)
+		return m, nil
+	}
+
+	m.openContentViewer(item.title, string(content), ContentModePlain)
 	return m, nil
 }
 
@@ -1070,7 +1131,8 @@ type taskItem struct {
 	title   string
 	status  string
 	taskID  string
-	number  int // Sequential group number (1-based, 0 for tasks)
+	url     string // URL for external tasks (empty for local markdown tasks)
+	number  int    // Sequential group number (1-based, 0 for tasks)
 }
 
 // getVisibleTaskItems returns the flat list of navigable items based on expand state.
@@ -1097,6 +1159,7 @@ func (m Model) getVisibleTaskItems() []taskItem {
 						taskID:  t.ID,
 						title:   t.Title,
 						status:  t.Status,
+						url:     t.URL,
 					})
 				}
 			}
@@ -1109,6 +1172,7 @@ func (m Model) getVisibleTaskItems() []taskItem {
 					groupID: g.ID,
 					title:   g.Title,
 					status:  g.Status,
+					url:     g.URL,
 					number:  groupNum,
 				})
 				// Auto-expand: show matching tasks (or all tasks if group title matched)
@@ -1121,6 +1185,7 @@ func (m Model) getVisibleTaskItems() []taskItem {
 							taskID:  t.ID,
 							title:   t.Title,
 							status:  t.Status,
+							url:     t.URL,
 						})
 					}
 				} else {
@@ -1139,6 +1204,7 @@ func (m Model) getVisibleTaskItems() []taskItem {
 			groupID: g.ID,
 			title:   g.Title,
 			status:  g.Status,
+			url:     g.URL,
 			number:  groupNum,
 		})
 		if m.taskExpandedGroups[g.ID] {
@@ -1149,6 +1215,7 @@ func (m Model) getVisibleTaskItems() []taskItem {
 					taskID:  t.ID,
 					title:   t.Title,
 					status:  t.Status,
+					url:     t.URL,
 				})
 			}
 		}
@@ -1220,14 +1287,13 @@ func capturePreviewCmd(sessionName string) tea.Cmd {
 
 // updateDialog handles key messages when a dialog is open.
 func (m Model) updateDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Route content viewer keys to its own handler
+	if m.dialogMode == DialogContentViewer {
+		return m.updateContentViewer(msg)
+	}
+
 	switch msg.String() {
 	case "esc":
-		// Handle escape based on current dialog mode
-		if m.dialogMode == DialogGitDiff {
-			// Return to git detail view from diff view
-			m.dialogMode = DialogGitDetail
-			return m, nil
-		}
 		// Close any dialog and reset state
 		m.dialogMode = DialogNone
 		m.dialogError = ""
@@ -1293,9 +1359,19 @@ func (m Model) updateDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "d":
-		// Show diff view from git detail view
+		// Show diff in content viewer from git detail view
 		if m.dialogMode == DialogGitDetail && m.sessionToModify != nil && m.sessionToModify.Git != nil {
-			m.dialogMode = DialogGitDiff
+			dir := pathutil.ExpandPath(m.sessionToModify.CWD)
+			diff := git.GetDiff(dir)
+			if diff == "" {
+				if m.sessionToModify.Git.Dirty {
+					diff = "No unstaged changes (changes may be staged)"
+				} else {
+					diff = "Working tree clean - no changes"
+				}
+			}
+			title := fmt.Sprintf("Git Diff: %s", m.sessionToModify.Git.Branch)
+			m.openContentViewerFrom(title, diff, ContentModeDiff, DialogGitDetail)
 			return m, nil
 		}
 	}
