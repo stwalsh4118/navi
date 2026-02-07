@@ -1,6 +1,10 @@
 package tui
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+)
 
 // Status icon color styles
 var (
@@ -76,6 +80,61 @@ var searchBarStyle = lipgloss.NewStyle().
 var filterActiveStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color("99")).
 	Bold(true)
+
+// Task panel styles
+var (
+	taskPanelBoxStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("240")).
+				Padding(0, 1)
+
+	taskPanelFocusedBoxStyle = lipgloss.NewStyle().
+					Border(lipgloss.RoundedBorder()).
+					BorderForeground(lipgloss.Color("99")).
+					Padding(0, 1)
+
+	taskGroupStyle = lipgloss.NewStyle().
+			Bold(true)
+
+	taskGroupChevronStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("99"))
+
+	taskIDStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241"))
+
+	taskEmptyStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241")).
+			Italic(true)
+
+	taskErrorStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("196")).
+			Italic(true)
+)
+
+// TaskStatusBadge returns a styled status badge for a task status string.
+func TaskStatusBadge(status string) string {
+	lower := strings.ToLower(status)
+	switch {
+	case lower == "done" || lower == "closed" || lower == "completed":
+		return greenStyle.Render(status)
+	case lower == "active" || lower == "in_progress" || lower == "inprogress" || lower == "working":
+		return cyanStyle.Render(status)
+	case lower == "todo" || lower == "open" || lower == "proposed" || lower == "agreed":
+		return yellowStyle.Render(status)
+	case lower == "blocked":
+		return redStyle.Render(status)
+	case lower == "review" || lower == "inreview":
+		return magentaStyle.Render(status)
+	default:
+		return dimStyle.Render(status)
+	}
+}
+
+// Task view chevron constants
+const (
+	taskChevronExpanded  = "▾"
+	taskChevronCollapsed = "▸"
+)
 
 // Status icon constants
 const (

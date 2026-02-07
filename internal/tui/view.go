@@ -47,7 +47,26 @@ func (m Model) View() string {
 		contentHeight = 5
 	}
 
-	if m.previewVisible && m.width >= previewMinTerminalWidth {
+	if m.taskPanelVisible && m.width >= previewMinTerminalWidth {
+		// Task panel layout: sessions on top, task panel on bottom
+		panelHeight := m.getTaskPanelHeight()
+		sessionListHeight := contentHeight - panelHeight - 1 // -1 for gap
+
+		sessionList := m.renderSessionList(m.width)
+		taskPanel := m.renderTaskPanel(m.width, panelHeight)
+
+		// Limit session list height
+		sessionLines := strings.Split(sessionList, "\n")
+		if len(sessionLines) > sessionListHeight {
+			sessionLines = sessionLines[:sessionListHeight]
+		}
+		sessionList = strings.Join(sessionLines, "\n")
+
+		// Join vertically
+		b.WriteString(sessionList)
+		b.WriteString("\n")
+		b.WriteString(taskPanel)
+	} else if m.previewVisible && m.width >= previewMinTerminalWidth {
 		if m.previewLayout == PreviewLayoutBottom {
 			// Bottom layout: sessions on top, preview on bottom
 			previewHeight := m.getPreviewHeight()
@@ -341,24 +360,31 @@ func (m Model) renderHeader() string {
 func (m Model) renderFooter() string {
 	var parts []string
 
-	// Always show these
-	parts = append(parts, "↑/↓ nav", "⏎ attach", "/ search", "p preview")
+	if m.taskPanelFocused {
+		// Show task panel focus keybindings
+		parts = append(parts, "↑/↓ nav", "/ search", "Space expand", "Tab/Esc back", "T close", "[/] resize", "q quit")
+	} else {
+		// Normal session keybindings
+		parts = append(parts, "↑/↓ nav", "⏎ attach", "/ search", "p preview", "T tasks")
 
-	// Show preview-specific keys only when preview is visible
-	if m.previewVisible {
-		parts = append(parts, "L layout", "W wrap", "[/] resize")
+		// Show panel-specific keys when a panel is visible
+		if m.previewVisible {
+			parts = append(parts, "L layout", "W wrap", "[/] resize")
+		} else if m.taskPanelVisible {
+			parts = append(parts, "Tab focus", "[/] resize")
+		}
+
+		// Show filter option with current state if remotes are configured
+		if len(m.Remotes) > 0 {
+			filterLabel := fmt.Sprintf("f filter:%s", m.filterModeString())
+			parts = append(parts, filterLabel)
+		}
+
+		// Show session action keybindings
+		parts = append(parts, "d dismiss", "n new", "x kill", "R rename", "G git")
+
+		parts = append(parts, "r refresh", "q quit")
 	}
-
-	// Show filter option with current state if remotes are configured
-	if len(m.Remotes) > 0 {
-		filterLabel := fmt.Sprintf("f filter:%s", m.filterModeString())
-		parts = append(parts, filterLabel)
-	}
-
-	// Show session action keybindings
-	parts = append(parts, "d dismiss", "n new", "x kill", "R rename", "G git")
-
-	parts = append(parts, "r refresh", "q quit")
 
 	footerHelp := strings.Join(parts, "  ")
 
