@@ -35,6 +35,7 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 27 | User | As a user, I want full management capabilities for remote sessions (git info, preview, kill, rename, dismiss) so that remote sessions have feature parity with local sessions | Done | [View Details](./27/prd.md) |
 | 28 | User | As a user, I want a task view with pluggable providers so that I can see my project tasks from any system (GitHub Issues, Linear, markdown, etc.) directly in Navi | Done | [View Details](./28/prd.md) |
 | 29 | User | As a user, I want an in-app content viewer so that I can view files, diffs, and task details without leaving the TUI | Done | [View Details](./29/prd.md) |
+| 30 | User | As a user, I want task providers to supply file paths so that the content viewer can open task detail files from any provider without hardcoded path 
 
 ## History Log
 
@@ -98,3 +99,4 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 2026-02-06 21:47:53 | 28 | Status Change | InReview → Done - All 8 tasks Done, all tests pass with -race, go vet clean | AI_Agent |
 | 2026-02-07 14:10:17 | 29 | Status Change | Proposed → Agreed - Approved for task breakdown | User |
 | 2026-02-07 15:41:24 | 29 | Status Change | Agreed → Done - All 5 tasks Done, all tests pass with -race, go vet clean | AI_Agent |
+| 2026-02-07 15:50:00 | 30 | Created | Provider-supplied file paths for content viewer - identified during PBI-29 PR review | User |
