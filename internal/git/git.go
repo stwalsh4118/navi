@@ -54,7 +54,7 @@ const (
 
 // Diff display constants
 const (
-	DiffMaxLines    = 100
+	DiffMaxLines     = 5000 // Increased for scrollable content viewer
 	DiffTruncatedMsg = "\n... (diff truncated)"
 )
 
