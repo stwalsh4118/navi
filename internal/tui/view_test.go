@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/stwalsh4118/navi/internal/git"
 	"github.com/stwalsh4118/navi/internal/pathutil"
 	"github.com/stwalsh4118/navi/internal/session"
@@ -619,139 +621,86 @@ func TestRenderSessionWithGitInfo(t *testing.T) {
 	})
 }
 
-func TestRenderGitDiffView(t *testing.T) {
-	t.Run("shows no git info message when no session", func(t *testing.T) {
-		m := Model{
-			width:           80,
-			height:          24,
-			dialogMode:      DialogGitDiff,
-			sessionToModify: nil,
-		}
-
-		result := m.renderGitDiffView()
-		if !strings.Contains(result, "No git information available") {
-			t.Error("should show 'No git information available' message")
-		}
-	})
-
-	t.Run("shows no git info message when git is nil", func(t *testing.T) {
+func TestRenderGitDiffViaContentViewer(t *testing.T) {
+	t.Run("d key from git detail opens content viewer with diff", func(t *testing.T) {
 		m := Model{
 			width:      80,
 			height:     24,
-			dialogMode: DialogGitDiff,
+			dialogMode: DialogGitDetail,
 			sessionToModify: &session.Info{
 				TmuxSession: "test",
 				CWD:         "/tmp",
-				Git:         nil,
+				Git:         &git.Info{Branch: "feature/test", Dirty: true},
 			},
 		}
 
-		result := m.renderGitDiffView()
-		if !strings.Contains(result, "No git information available") {
-			t.Error("should show 'No git information available' message")
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}}
+		updatedModel, _ := m.Update(msg)
+		newM := updatedModel.(Model)
+
+		if newM.dialogMode != DialogContentViewer {
+			t.Errorf("expected DialogContentViewer, got %d", newM.dialogMode)
+		}
+		if !strings.Contains(newM.contentViewerTitle, "feature/test") {
+			t.Error("content viewer title should contain branch name")
 		}
 	})
 
-	t.Run("shows branch name", func(t *testing.T) {
+	t.Run("content viewer renders diff with branch in title", func(t *testing.T) {
 		m := Model{
-			width:      80,
-			height:     24,
-			dialogMode: DialogGitDiff,
-			sessionToModify: &session.Info{
-				TmuxSession: "test",
-				CWD:         "/", // Non-git dir for predictable output
-				Git: &git.Info{
-					Branch: "feature/test",
-					Dirty:  false,
-				},
-			},
+			width:              80,
+			height:             24,
+			dialogMode:         DialogContentViewer,
+			contentViewerTitle: "Git Diff: main",
+			contentViewerLines: []string{"+added", "-removed", " context"},
+			contentViewerMode:  ContentModeDiff,
 		}
 
-		result := m.renderGitDiffView()
-		if !strings.Contains(result, "feature/test") {
-			t.Error("should show branch name")
+		result := m.renderContentViewer()
+		if !strings.Contains(result, "Git Diff: main") {
+			t.Error("should show title with branch name")
+		}
+		if !strings.Contains(result, "added") {
+			t.Error("should show diff content")
 		}
 	})
 
-	t.Run("shows clean message when not dirty and no changes", func(t *testing.T) {
+	t.Run("Esc from diff content viewer returns to git detail", func(t *testing.T) {
 		m := Model{
-			width:      80,
-			height:     24,
-			dialogMode: DialogGitDiff,
-			sessionToModify: &session.Info{
-				TmuxSession: "test",
-				CWD:         "/", // Non-git dir - no diff output
-				Git: &git.Info{
-					Branch: "main",
-					Dirty:  false,
-				},
-			},
-		}
-
-		result := m.renderGitDiffView()
-		if !strings.Contains(result, "Working tree clean") {
-			t.Error("should show clean working tree message")
-		}
-	})
-
-	t.Run("shows dirty indicator when dirty", func(t *testing.T) {
-		m := Model{
-			width:      80,
-			height:     24,
-			dialogMode: DialogGitDiff,
-			sessionToModify: &session.Info{
-				TmuxSession: "test",
-				CWD:         "/", // Non-git dir for testing
-				Git: &git.Info{
-					Branch: "main",
-					Dirty:  true,
-				},
-			},
-		}
-
-		result := m.renderGitDiffView()
-		if !strings.Contains(result, git.DirtyIndicator) {
-			t.Error("should show dirty indicator")
-		}
-	})
-
-	t.Run("shows back keybinding", func(t *testing.T) {
-		m := Model{
-			width:      80,
-			height:     24,
-			dialogMode: DialogGitDiff,
+			width:                   80,
+			height:                  24,
+			dialogMode:              DialogContentViewer,
+			contentViewerPrevDialog: DialogGitDetail,
+			contentViewerLines:      []string{"some diff"},
 			sessionToModify: &session.Info{
 				TmuxSession: "test",
 				CWD:         "/tmp",
-				Git: &git.Info{
-					Branch: "main",
-				},
+				Git:         &git.Info{Branch: "main"},
 			},
 		}
 
-		result := m.renderGitDiffView()
-		if !strings.Contains(result, "Esc: back") {
-			t.Error("should show Esc keybinding")
+		msg := tea.KeyMsg{Type: tea.KeyEsc}
+		updatedModel, _ := m.Update(msg)
+		newM := updatedModel.(Model)
+
+		if newM.dialogMode != DialogGitDetail {
+			t.Errorf("expected return to DialogGitDetail, got %d", newM.dialogMode)
 		}
 	})
 
-	t.Run("shows title", func(t *testing.T) {
+	t.Run("content viewer shows Esc close keybinding", func(t *testing.T) {
 		m := Model{
-			width:      80,
-			height:     24,
-			dialogMode: DialogGitDiff,
-			sessionToModify: &session.Info{
-				TmuxSession: "test",
-				CWD:         "/tmp",
-				Git: &git.Info{
-					Branch: "main",
-				},
-			},
+			width:              80,
+			height:             24,
+			dialogMode:         DialogContentViewer,
+			contentViewerTitle: "Git Diff: main",
+			contentViewerLines: []string{"content"},
+			contentViewerMode:  ContentModeDiff,
 		}
 
-		result := m.renderGitDiffView()
-		if !strings.Contains(result, "Git Changes") {
-			t.Error("should show 'Git Changes' title")
+		result := m.renderContentViewer()
+		if !strings.Contains(result, "Esc close") {
+			t.Error("should show Esc close keybinding")
 		}
 	})
 }

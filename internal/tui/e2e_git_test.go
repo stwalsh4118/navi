@@ -218,7 +218,7 @@ func TestE2E_GitDetailView(t *testing.T) {
 
 // TestE2E_DiffPreview verifies the diff preview functionality.
 func TestE2E_DiffPreview(t *testing.T) {
-	t.Run("d key opens diff view from git detail", func(t *testing.T) {
+	t.Run("d key opens content viewer with diff mode from git detail", func(t *testing.T) {
 		m := Model{
 			width:      80,
 			height:     24,
@@ -235,38 +235,50 @@ func TestE2E_DiffPreview(t *testing.T) {
 		updatedModel, _ := m.Update(msg)
 		newM := updatedModel.(Model)
 
-		if newM.dialogMode != DialogGitDiff {
-			t.Error("CoS 6 failed: d key should open diff view from git detail")
+		if newM.dialogMode != DialogContentViewer {
+			t.Errorf("d key should open content viewer, got dialog mode %d", newM.dialogMode)
+		}
+		if newM.contentViewerMode != ContentModeDiff {
+			t.Error("content viewer should be in diff mode")
+		}
+		if !strings.Contains(newM.contentViewerTitle, "main") {
+			t.Error("content viewer title should contain branch name")
+		}
+		if newM.contentViewerPrevDialog != DialogGitDetail {
+			t.Error("content viewer should return to git detail on close")
 		}
 	})
 
-	t.Run("diff view shows branch and changes", func(t *testing.T) {
+	t.Run("diff content viewer shows branch in title", func(t *testing.T) {
 		m := Model{
 			width:      80,
 			height:     24,
-			dialogMode: DialogGitDiff,
+			dialogMode: DialogGitDetail,
 			sessionToModify: &session.Info{
 				TmuxSession: "test",
 				CWD:         "/",
-				Git:         &git.Info{Branch: "main", Dirty: false},
+				Git:         &git.Info{Branch: "feature/test", Dirty: false},
 			},
 		}
 
-		result := m.renderGitDiffView()
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}}
+		updatedModel, _ := m.Update(msg)
+		newM := updatedModel.(Model)
 
-		if !strings.Contains(result, "main") {
-			t.Error("CoS 6 failed: Diff view should show branch name")
-		}
-		if !strings.Contains(result, "Git Changes") {
-			t.Error("CoS 6 failed: Diff view should have title")
+		if !strings.Contains(newM.contentViewerTitle, "feature/test") {
+			t.Error("diff content viewer title should show branch name")
 		}
 	})
 
-	t.Run("Esc returns to git detail from diff view", func(t *testing.T) {
+	t.Run("Esc returns to git detail from diff content viewer", func(t *testing.T) {
 		m := Model{
-			width:      80,
-			height:     24,
-			dialogMode: DialogGitDiff,
+			width:                   80,
+			height:                  24,
+			dialogMode:              DialogContentViewer,
+			contentViewerPrevDialog: DialogGitDetail,
+			contentViewerMode:       ContentModeDiff,
+			contentViewerLines:      []string{"diff content"},
+			contentViewerTitle:      "Git Diff: main",
 			sessionToModify: &session.Info{
 				TmuxSession: "test",
 				CWD:         "/tmp",
@@ -280,7 +292,7 @@ func TestE2E_DiffPreview(t *testing.T) {
 		newM := updatedModel.(Model)
 
 		if newM.dialogMode != DialogGitDetail {
-			t.Error("CoS 6 failed: Esc should return to git detail from diff view")
+			t.Errorf("Esc should return to git detail, got dialog mode %d", newM.dialogMode)
 		}
 	})
 }
