@@ -1070,6 +1070,7 @@ type taskItem struct {
 	title   string
 	status  string
 	taskID  string
+	number  int // Sequential group number (1-based, 0 for tasks)
 }
 
 // getVisibleTaskItems returns the flat list of navigable items based on expand state.
@@ -1077,6 +1078,7 @@ type taskItem struct {
 // auto-expands groups that contain matching tasks.
 func (m Model) getVisibleTaskItems() []taskItem {
 	var items []taskItem
+	groupNum := 0
 
 	if m.taskSearchQuery != "" {
 		// Search mode: filter and auto-expand matching groups
@@ -1101,11 +1103,13 @@ func (m Model) getVisibleTaskItems() []taskItem {
 
 			// Show group if it matches or has matching tasks
 			if groupMatches || len(matchingTasks) > 0 {
+				groupNum++
 				items = append(items, taskItem{
 					isGroup: true,
 					groupID: g.ID,
 					title:   g.Title,
 					status:  g.Status,
+					number:  groupNum,
 				})
 				// Auto-expand: show matching tasks (or all tasks if group title matched)
 				if groupMatches && len(matchingTasks) == 0 {
@@ -1129,11 +1133,13 @@ func (m Model) getVisibleTaskItems() []taskItem {
 
 	// Normal mode: respect expand/collapse state
 	for _, g := range m.taskGroups {
+		groupNum++
 		items = append(items, taskItem{
 			isGroup: true,
 			groupID: g.ID,
 			title:   g.Title,
 			status:  g.Status,
+			number:  groupNum,
 		})
 		if m.taskExpandedGroups[g.ID] {
 			for _, t := range g.Tasks {

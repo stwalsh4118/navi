@@ -172,10 +172,11 @@ func (m Model) renderTaskPanelGroupHeader(item taskItem, selected bool, width in
 	}
 
 	styledChevron := taskGroupChevronStyle.Render(chevron)
+	groupNum := dimStyle.Render(fmt.Sprintf("%d.", item.number))
 	styledTitle := taskGroupStyle.Render(item.title)
 	countLabel := dimStyle.Render(fmt.Sprintf("(%d)", taskCount))
 
-	line := fmt.Sprintf("%s%s %s %s", marker, styledChevron, styledTitle, countLabel)
+	line := fmt.Sprintf("%s%s %s %s %s", marker, styledChevron, groupNum, styledTitle, countLabel)
 
 	// Status on the right
 	if item.status != "" {
