@@ -552,17 +552,19 @@ func TestE2E_TaskPanelSearch(t *testing.T) {
 		}
 	})
 
-	t.Run("no match shows empty state", func(t *testing.T) {
+	t.Run("no match shows indicator in search bar", func(t *testing.T) {
 		m := newTaskTestModel()
 		m.taskPanelVisible = true
 		m.taskPanelFocused = true
 		m.taskSearchMode = true
 		m.taskSearchQuery = "xyznonexistent"
+		m.computeTaskSearchMatches()
 
 		result := m.View()
 
-		if !strings.Contains(result, "No tasks matching") {
-			t.Error("should show 'no tasks matching' for non-matching search")
+		// All tasks remain visible but search bar shows "No matches"
+		if !strings.Contains(result, "No matches") {
+			t.Error("should show 'No matches' indicator for non-matching search")
 		}
 	})
 
