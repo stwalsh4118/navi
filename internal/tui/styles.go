@@ -169,6 +169,8 @@ const (
 	iconWorking    = "⚙️"
 	iconError      = "❌"
 	iconOffline    = "⏹️"
+	iconIdle       = "⏸"
+	iconStopped    = "⏹"
 	iconUnknown    = "○"
 )
 
@@ -187,6 +189,10 @@ func StatusIcon(status string) string {
 		return redStyle.Render(iconError)
 	case "offline":
 		return grayStyle.Render(iconOffline)
+	case "idle":
+		return grayStyle.Render(iconIdle)
+	case "stopped":
+		return grayStyle.Render(iconStopped)
 	default:
 		return dimStyle.Render(iconUnknown)
 	}

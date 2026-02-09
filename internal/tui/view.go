@@ -170,10 +170,26 @@ func (m Model) renderSession(s session.Info, selected bool, width int) string {
 		remoteLabel = " " + dimStyle.Render(fmt.Sprintf("[%s]", s.Remote))
 	}
 
+	// Add agent count badge if team is active (exclude stopped agents)
+	teamBadge := ""
+	if s.Team != nil && len(s.Team.Agents) > 0 {
+		activeCount := 0
+		for _, a := range s.Team.Agents {
+			if a.Status != session.StatusStopped {
+				activeCount++
+			}
+		}
+		if activeCount > 0 {
+			teamBadge = " " + dimStyle.Render(fmt.Sprintf("[%d agents]", activeCount))
+		} else {
+			teamBadge = " " + dimStyle.Render("[team done]")
+		}
+	}
+
 	age := formatAge(s.Timestamp)
 
 	// Calculate padding for right-aligned age
-	firstLine := fmt.Sprintf("%s%s  %s%s", marker, icon, name, remoteLabel)
+	firstLine := fmt.Sprintf("%s%s  %s%s%s", marker, icon, name, remoteLabel, teamBadge)
 	padding := width - lipgloss.Width(firstLine) - len(age) - 2
 	if padding < 1 {
 		padding = 1
@@ -214,7 +230,64 @@ func (m Model) renderSession(s session.Info, selected bool, width int) string {
 		b.WriteString(dimStyle.Render(italicStyle.Render(fmt.Sprintf("\"%s\"", msg))))
 	}
 
+	// Team agents line if team is active (indented, dimmed agent names)
+	if s.Team != nil && len(s.Team.Agents) > 0 {
+		b.WriteString("\n")
+		b.WriteString(renderTeamAgents(s.Team.Agents, width, len(rowIndent)))
+	}
+
 	return b.String()
+}
+
+// agentSeparator is the spacing between agent entries on the team line.
+const agentSeparator = "  "
+
+// renderTeamAgents renders the team agent list with status icons and names.
+// Handles line wrapping if agents overflow the available width.
+func renderTeamAgents(agents []session.AgentInfo, totalWidth, indentLen int) string {
+	indent := strings.Repeat(" ", indentLen)
+	availableWidth := totalWidth - indentLen
+
+	var lines []string
+	var currentLine strings.Builder
+	currentLineWidth := 0
+
+	for _, agent := range agents {
+		icon := StatusIcon(agent.Status)
+		agentName := dimStyle.Render(agent.Name)
+		entry := icon + " " + agentName
+
+		entryWidth := lipgloss.Width(entry)
+
+		// Add separator width if not the first entry on this line
+		sepWidth := 0
+		if currentLineWidth > 0 {
+			sepWidth = lipgloss.Width(agentSeparator)
+		}
+
+		// Check if this entry fits on the current line
+		if currentLineWidth > 0 && currentLineWidth+sepWidth+entryWidth > availableWidth {
+			// Wrap to next line
+			lines = append(lines, indent+currentLine.String())
+			currentLine.Reset()
+			currentLineWidth = 0
+		}
+
+		if currentLineWidth > 0 {
+			currentLine.WriteString(agentSeparator)
+			currentLineWidth += sepWidth
+		}
+
+		currentLine.WriteString(entry)
+		currentLineWidth += entryWidth
+	}
+
+	// Append the last line
+	if currentLineWidth > 0 {
+		lines = append(lines, indent+currentLine.String())
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 // renderMetricsBadges returns a compact metrics display string.
