@@ -393,7 +393,10 @@ func (m Model) renderHeader() string {
 func (m Model) renderFooter() string {
 	var parts []string
 
-	if m.taskPanelFocused {
+	if m.previewFocused {
+		// Show preview focus keybindings
+		parts = append(parts, "j/k scroll", "PgUp/PgDn page", "g/G top/bottom", "Tab/Esc back", "[/] resize", "q quit")
+	} else if m.taskPanelFocused {
 		// Show task panel focus keybindings
 		parts = append(parts, "↑/↓ nav", "/ search", "Space expand", "Tab/Esc back", "T close", "[/] resize", "q quit")
 	} else {
@@ -402,7 +405,7 @@ func (m Model) renderFooter() string {
 
 		// Show panel-specific keys when a panel is visible
 		if m.previewVisible {
-			parts = append(parts, "L layout", "W wrap", "[/] resize")
+			parts = append(parts, "Tab focus", "L layout", "W wrap", "[/] resize")
 		} else if m.taskPanelVisible {
 			parts = append(parts, "Tab focus", "[/] resize")
 		}
@@ -508,18 +511,76 @@ func (m Model) renderPreview(width, height int) string {
 			maxLines = 1
 		}
 
-		// Split into lines and limit to available height
+		// Split into lines and apply scroll offset
 		lines := strings.Split(content, "\n")
+
+		// Clamp scroll offset.
+		// When scrolling is active, the top indicator takes 1 line from content
+		// at max scroll, so maxScroll must be 1 higher to show the last line.
+		maxScroll := 0
 		if len(lines) > maxLines {
-			lines = lines[len(lines)-maxLines:]
+			maxScroll = len(lines) - maxLines + 1
 		}
 
-		b.WriteString(strings.Join(lines, "\n"))
+		// Auto-scroll: when enabled, always show the bottom
+		scrollOffset := m.previewScrollOffset
+		if m.previewAutoScroll {
+			scrollOffset = maxScroll
+		}
+		if scrollOffset > maxScroll {
+			scrollOffset = maxScroll
+		}
+		if scrollOffset < 0 {
+			scrollOffset = 0
+		}
+
+		// Check if scroll indicators are needed and reserve lines for them.
+		// Important: hasBelow must be checked AFTER reducing for hasAbove, because
+		// the top indicator reduces visible content, making it more likely
+		// that content extends below the viewport.
+		hasAbove := scrollOffset > 0
+		contentLines := maxLines
+		if hasAbove {
+			contentLines--
+		}
+		hasBelow := scrollOffset+contentLines < len(lines)
+		if hasBelow {
+			contentLines--
+		}
+		if contentLines < 1 {
+			contentLines = 1
+		}
+
+		// Slice visible lines from scroll offset
+		endIdx := scrollOffset + contentLines
+		if endIdx > len(lines) {
+			endIdx = len(lines)
+		}
+		visibleLines := lines[scrollOffset:endIdx]
+
+		// Render top scroll indicator
+		if hasAbove {
+			b.WriteString(dimStyle.Render(fmt.Sprintf(scrollIndicatorAbove, scrollOffset)))
+			b.WriteString("\n")
+		}
+
+		b.WriteString(strings.Join(visibleLines, "\n"))
+
+		// Render bottom scroll indicator
+		if hasBelow {
+			belowCount := len(lines) - endIdx
+			b.WriteString("\n")
+			b.WriteString(dimStyle.Render(fmt.Sprintf(scrollIndicatorBelow, belowCount)))
+		}
 	}
 
-	// Render the box
+	// Render the box - use focused style when preview has focus
 	boxContent := b.String()
-	rendered := previewBoxStyle.Width(width - 2).Render(boxContent)
+	pBoxStyle := previewBoxStyle
+	if m.previewFocused {
+		pBoxStyle = previewFocusedBoxStyle
+	}
+	rendered := pBoxStyle.Width(width - 2).Render(boxContent)
 
 	// Ensure the final output is exactly `height` lines by truncating or padding
 	renderedLines := strings.Split(rendered, "\n")
@@ -578,6 +639,8 @@ func (m Model) isCurrentSearchMatch(idx int) bool {
 }
 
 // renderSessionList renders the session list portion of the view.
+// Uses sessionScrollOffset for viewport-aware rendering, showing only visible sessions.
+// Shows scroll indicators when sessions extend beyond the viewport.
 func (m Model) renderSessionList(width int) string {
 	var b strings.Builder
 
@@ -595,12 +658,37 @@ func (m Model) renderSessionList(width int) string {
 		b.WriteString(dimStyle.Render(message))
 		b.WriteString("\n")
 	} else {
-		for i, s := range filteredSessions {
+		startIdx := m.sessionScrollOffset
+		if startIdx > len(filteredSessions) {
+			startIdx = len(filteredSessions)
+		}
+		if startIdx < 0 {
+			startIdx = 0
+		}
+
+		// Top scroll indicator
+		if startIdx > 0 {
+			b.WriteString(dimStyle.Render(fmt.Sprintf(scrollIndicatorAbove, startIdx)))
+			b.WriteString("\n")
+		}
+
+		for i := startIdx; i < len(filteredSessions); i++ {
+			s := filteredSessions[i]
 			selected := i == m.cursor
 			isMatch := m.searchQuery != "" && m.isSearchMatch(i)
 			isCurrentMatch := m.searchQuery != "" && m.isCurrentSearchMatch(i)
 			b.WriteString(m.renderSessionRow(s, selected, isMatch, isCurrentMatch, width))
 			b.WriteString("\n")
+		}
+
+		// Bottom scroll indicator (based on estimated max visible sessions)
+		maxVisible := m.sessionListMaxVisible()
+		if startIdx+maxVisible < len(filteredSessions) {
+			belowCount := len(filteredSessions) - startIdx - maxVisible
+			if belowCount > 0 {
+				b.WriteString(dimStyle.Render(fmt.Sprintf(scrollIndicatorBelow, belowCount)))
+				b.WriteString("\n")
+			}
 		}
 	}
 
