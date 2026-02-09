@@ -2,6 +2,7 @@
 # tool-tracker.sh - Hook script for tracking tool usage in navi.
 # Called by Claude Code PostToolUse hooks to track tool counts and recent tools.
 # Receives JSON input via stdin with tool_name, tool_input, tool_response, tool_use_id.
+# Skips processing for teammate events (agent-level tool metrics are not tracked).
 
 DIR="$HOME/.claude-sessions"
 mkdir -p "$DIR"
@@ -9,10 +10,18 @@ mkdir -p "$DIR"
 SESSION=$(tmux display-message -p '#{session_name}' 2>/dev/null || echo "unknown")
 SESSION_FILE="$DIR/$SESSION.json"
 
-# Read tool name from stdin JSON
+# Read stdin JSON
 # The hook receives JSON like: {"tool_name": "Read", "tool_input": {...}, ...}
 if command -v jq &> /dev/null; then
     INPUT=$(cat)
+
+    # Skip processing for teammate events - agent-level tool metrics are not tracked
+    TEAMMATE_NAME=$(echo "$INPUT" | jq -r '.teammate_name // ""' 2>/dev/null)
+    [ "$TEAMMATE_NAME" = "null" ] && TEAMMATE_NAME=""
+    if [ -n "$TEAMMATE_NAME" ]; then
+        exit 0
+    fi
+
     TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // ""')
 else
     # Fallback: try to extract tool_name with grep/sed
@@ -31,10 +40,14 @@ MAX_RECENT_TOOLS=10
 # Read existing session data
 TOOL_COUNTS="{}"
 RECENT_TOOLS="[]"
+EXISTING_TEAM=""
 
 if [ -f "$SESSION_FILE" ] && command -v jq &> /dev/null; then
     TOOL_COUNTS=$(jq -r '.metrics.tools.counts // {}' "$SESSION_FILE" 2>/dev/null || echo "{}")
     RECENT_TOOLS=$(jq -r '.metrics.tools.recent // []' "$SESSION_FILE" 2>/dev/null || echo "[]")
+    # Preserve existing team data
+    EXISTING_TEAM=$(jq '.team // null' "$SESSION_FILE" 2>/dev/null || echo "null")
+    [ "$EXISTING_TEAM" = "null" ] && EXISTING_TEAM=""
 fi
 
 # Update tool counts - increment count for this tool
@@ -81,8 +94,16 @@ else
     WAITING_SECONDS=0
 fi
 
-# Write updated session file with tool metrics
-cat > "$SESSION_FILE" <<EOF
+# Build team field if it exists
+TEAM_FIELD=""
+if [ -n "$EXISTING_TEAM" ] && [ "$EXISTING_TEAM" != "null" ]; then
+    TEAM_FIELD=",
+  \"team\": $EXISTING_TEAM"
+fi
+
+# Write updated session file with tool metrics (atomic via temp file)
+TMPFILE=$(mktemp "$DIR/.tmp.XXXXXX")
+cat > "$TMPFILE" <<EOF
 {
   "tmux_session": "$TMUX_SESSION",
   "status": "$STATUS",
@@ -100,6 +121,7 @@ cat > "$SESSION_FILE" <<EOF
       "recent": $RECENT_TOOLS,
       "counts": $TOOL_COUNTS
     }
-  }
+  }$TEAM_FIELD
 }
 EOF
+mv "$TMPFILE" "$SESSION_FILE"
