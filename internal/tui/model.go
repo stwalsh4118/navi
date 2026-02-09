@@ -22,6 +22,7 @@ import (
 type Model struct {
 	sessions            []session.Info
 	cursor              int
+	sessionScrollOffset int    // First visible session index for session list scrolling
 	width               int
 	height              int
 	err                 error
@@ -46,6 +47,9 @@ type Model struct {
 	previewWidth       int           // Width of preview pane in columns (side layout)
 	previewHeight      int           // Height of preview pane in rows (bottom layout)
 	previewWrap        bool          // Whether to wrap long lines (true) or truncate (false)
+	previewScrollOffset int          // First visible line in preview pane
+	previewAutoScroll   bool         // Auto-scroll to bottom on new content (default true)
+	previewFocused      bool         // Whether keyboard focus is in preview pane
 	previewLastCapture time.Time     // Last capture timestamp for debouncing
 	previewLastCursor  int           // Last cursor position for detecting cursor changes
 
@@ -73,6 +77,7 @@ type Model struct {
 	taskPanelFocused    bool                            // Whether keyboard focus is inside the task panel
 	taskPanelHeight     int                             // Height of task panel in rows
 	taskCursor          int                             // Cursor position in flat task item list
+	taskScrollOffset    int                             // First visible item index for task panel scrolling
 	taskExpandedGroups  map[string]bool                 // Which groups are expanded (collapsed by default)
 	taskSearchMode       bool                            // Whether task search input is active
 	taskSearchQuery      string                          // Current task search text
@@ -194,6 +199,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateTaskPanelFocus(msg)
 		}
 
+		// Handle preview focus mode - route to preview scroll keybindings
+		if m.previewFocused {
+			return m.updatePreviewFocus(msg)
+		}
+
 		// Handle search mode - forward most keys to search input
 		if m.searchMode {
 			return m.updateSearchMode(msg)
@@ -210,6 +220,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else {
 					m.cursor = len(filteredSessions) - 1 // wrap to bottom
 				}
+				m.ensureSessionCursorVisible(m.sessionListMaxVisible())
 				if m.cursor != oldCursor {
 					// Trigger debounced preview capture if preview visible
 					if m.previewVisible {
@@ -233,6 +244,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else {
 					m.cursor = 0 // wrap to top
 				}
+				m.ensureSessionCursorVisible(m.sessionListMaxVisible())
 				if m.cursor != oldCursor {
 					// Trigger debounced preview capture if preview visible
 					if m.previewVisible {
@@ -339,6 +351,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.taskPanelVisible {
 				m.taskPanelFocused = true
 				m.taskCursor = 0
+				m.taskScrollOffset = 0
+				return m, nil
+			}
+			// Tab enters preview focus when preview is visible
+			if m.previewVisible {
+				m.previewFocused = true
 				return m, nil
 			}
 			// Otherwise toggle preview (same as p)
@@ -812,6 +830,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			m.previewContent = msg.content
 			m.previewLastCapture = time.Now()
+			// Auto-scroll is handled in renderPreview - when previewAutoScroll is true,
+			// the render function always shows the bottom of content
 		}
 		// Silently ignore errors - preview just won't update
 		return m, nil
@@ -833,7 +853,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, previewTickCmd()
 
 	case previewDebounceMsg:
-		// Debounced capture after cursor movement
+		// Debounced capture after cursor movement - reset preview scroll state
+		m.previewScrollOffset = 0
+		m.previewAutoScroll = true
+		m.previewFocused = false
 		filteredSessions := m.getFilteredSessions()
 		if !m.previewVisible || len(filteredSessions) == 0 {
 			return m, nil
@@ -942,6 +965,7 @@ func (m Model) getPreviewWidth() int {
 // based on the currently selected session.
 func (m *Model) updateTaskPanelForCursor() {
 	filteredSessions := m.getFilteredSessions()
+	oldProject := m.taskFocusedProject
 	if m.cursor < len(filteredSessions) {
 		m.taskFocusedProject = findProjectForCWD(filteredSessions[m.cursor].CWD, m.taskProjectConfigs)
 	} else {
@@ -952,6 +976,11 @@ func (m *Model) updateTaskPanelForCursor() {
 		m.taskGroups = m.taskGroupsByProject[m.taskFocusedProject]
 	} else {
 		m.taskGroups = nil
+	}
+
+	// Reset scroll offset when project changes
+	if m.taskFocusedProject != oldProject {
+		m.taskScrollOffset = 0
 	}
 }
 
@@ -976,6 +1005,12 @@ func (m Model) togglePreview() (tea.Model, tea.Cmd) {
 		m.taskPanelFocused = false
 		m.taskSearchMode = false
 		m.taskSearchQuery = ""
+		// Reset preview scroll state
+		m.previewScrollOffset = 0
+		m.previewAutoScroll = true
+		m.previewFocused = false
+	} else {
+		m.previewFocused = false
 	}
 	filteredSessions := m.getFilteredSessions()
 	if m.previewVisible && len(filteredSessions) > 0 && m.cursor < len(filteredSessions) {
@@ -988,6 +1023,55 @@ func (m Model) togglePreview() (tea.Model, tea.Cmd) {
 		)
 	}
 	m.previewContent = ""
+	return m, nil
+}
+
+// updatePreviewFocus handles key messages when the preview pane has focus.
+func (m Model) updatePreviewFocus(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "tab", "esc":
+		m.previewFocused = false
+		return m, nil
+
+	case "down", "j":
+		m.previewScrollOffset++
+		m.previewAutoScroll = false
+		return m, nil
+
+	case "up", "k":
+		if m.previewScrollOffset > 0 {
+			m.previewScrollOffset--
+		}
+		m.previewAutoScroll = false
+		return m, nil
+
+	case "pgdown":
+		m.previewScrollOffset += previewPageScrollAmt
+		m.previewAutoScroll = false
+		return m, nil
+
+	case "pgup":
+		m.previewScrollOffset -= previewPageScrollAmt
+		if m.previewScrollOffset < 0 {
+			m.previewScrollOffset = 0
+		}
+		m.previewAutoScroll = false
+		return m, nil
+
+	case "g":
+		m.previewScrollOffset = 0
+		m.previewAutoScroll = false
+		return m, nil
+
+	case "G":
+		// Jump to bottom and re-enable auto-scroll
+		m.previewAutoScroll = true
+		return m, nil
+
+	case "q", "ctrl+c":
+		return m, tea.Quit
+	}
+
 	return m, nil
 }
 
@@ -1025,6 +1109,7 @@ func (m Model) updateTaskPanelFocus(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Jump to next task match when search query is active
 		if m.taskSearchQuery != "" {
 			m.nextTaskMatch()
+			m.ensureTaskCursorVisible(m.taskPanelViewportLines())
 			return m, nil
 		}
 		return m, nil
@@ -1033,16 +1118,57 @@ func (m Model) updateTaskPanelFocus(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Jump to previous task match when search query is active
 		if m.taskSearchQuery != "" {
 			m.prevTaskMatch()
+			m.ensureTaskCursorVisible(m.taskPanelViewportLines())
 			return m, nil
 		}
 		return m, nil
 
 	case "up", "k":
 		m.moveTaskCursor(-1)
+		m.ensureTaskCursorVisible(m.taskPanelViewportLines())
 		return m, nil
 
 	case "down", "j":
 		m.moveTaskCursor(1)
+		m.ensureTaskCursorVisible(m.taskPanelViewportLines())
+		return m, nil
+
+	case "pgup":
+		maxLines := m.taskPanelViewportLines()
+		m.taskScrollOffset -= taskPanelPageScrollAmt
+		if m.taskScrollOffset < 0 {
+			m.taskScrollOffset = 0
+		}
+		m.taskCursor = m.taskScrollOffset
+		m.ensureTaskCursorVisible(maxLines)
+		return m, nil
+
+	case "pgdown":
+		maxLines := m.taskPanelViewportLines()
+		items := m.getVisibleTaskItems()
+		m.taskScrollOffset += taskPanelPageScrollAmt
+		maxScroll := taskPanelMaxScroll(len(items), maxLines)
+		if m.taskScrollOffset > maxScroll {
+			m.taskScrollOffset = maxScroll
+		}
+		m.taskCursor = m.taskScrollOffset
+		m.ensureTaskCursorVisible(maxLines)
+		return m, nil
+
+	case "g":
+		// Jump to top
+		m.taskCursor = 0
+		m.taskScrollOffset = 0
+		return m, nil
+
+	case "G":
+		// Jump to bottom
+		items := m.getVisibleTaskItems()
+		if len(items) > 0 {
+			m.taskCursor = len(items) - 1
+			maxLines := m.taskPanelViewportLines()
+			m.ensureTaskCursorVisible(maxLines)
+		}
 		return m, nil
 
 	case "enter":
@@ -1062,6 +1188,8 @@ func (m Model) updateTaskPanelFocus(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.taskCursor >= len(items) && len(items) > 0 {
 				m.taskCursor = len(items) - 1
 			}
+			m.clampTaskScrollOffset(m.taskPanelViewportLines())
+			m.ensureTaskCursorVisible(m.taskPanelViewportLines())
 			return m, nil
 		}
 		// Task item: open URL externally or file in content viewer
@@ -1081,6 +1209,9 @@ func (m Model) updateTaskPanelFocus(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.taskCursor >= len(items) && len(items) > 0 {
 				m.taskCursor = len(items) - 1
 			}
+			// Clamp scroll offset after expansion change
+			m.clampTaskScrollOffset(m.taskPanelViewportLines())
+			m.ensureTaskCursorVisible(m.taskPanelViewportLines())
 		}
 		return m, nil
 
@@ -1137,14 +1268,17 @@ func (m Model) updateTaskSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Clear all task search state (stay in focus mode)
 		m.clearTaskSearchState()
 		m.taskCursor = 0
+		m.taskScrollOffset = 0
 		return m, nil
 
 	case "up", "k":
 		m.moveTaskCursor(-1)
+		m.ensureTaskCursorVisible(m.taskPanelViewportLines())
 		return m, nil
 
 	case "down", "j":
 		m.moveTaskCursor(1)
+		m.ensureTaskCursorVisible(m.taskPanelViewportLines())
 		return m, nil
 
 	case "enter":
@@ -1167,6 +1301,8 @@ func (m Model) updateTaskSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.taskCursor >= len(items) && len(items) > 0 {
 				m.taskCursor = len(items) - 1
 			}
+			m.clampTaskScrollOffset(m.taskPanelViewportLines())
+			m.ensureTaskCursorVisible(m.taskPanelViewportLines())
 		}
 		return m, nil
 	}
@@ -1194,6 +1330,8 @@ func (m Model) updateTaskSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.taskCursor = 0
 		}
 	}
+
+	m.ensureTaskCursorVisible(m.taskPanelViewportLines())
 
 	return m, cmd
 }
@@ -1352,10 +1490,12 @@ func (m Model) getSelectedTaskItem() *taskItem {
 }
 
 // moveTaskCursor moves the task cursor by delta, wrapping at bounds.
+// After moving, it ensures the cursor is visible within the scroll viewport.
 func (m *Model) moveTaskCursor(delta int) {
 	items := m.getVisibleTaskItems()
 	if len(items) == 0 {
 		m.taskCursor = 0
+		m.taskScrollOffset = 0
 		return
 	}
 	m.taskCursor += delta
@@ -1364,6 +1504,90 @@ func (m *Model) moveTaskCursor(delta int) {
 	} else if m.taskCursor >= len(items) {
 		m.taskCursor = 0
 	}
+}
+
+// taskPanelMaxScroll returns the maximum valid scroll offset for the task panel.
+// When scrolling is active, the top scroll indicator takes 1 line from content,
+// so at maximum scroll only maxLines-1 items are visible.
+func taskPanelMaxScroll(totalItems, maxLines int) int {
+	if totalItems <= maxLines {
+		return 0
+	}
+	// At max scroll, the top indicator is shown, reducing visible items by 1.
+	// To show the last item: maxScroll + (maxLines - 1) >= totalItems
+	// So maxScroll = totalItems - maxLines + 1
+	return totalItems - maxLines + 1
+}
+
+// ensureTaskCursorVisible adjusts taskScrollOffset so the cursor is within the visible viewport.
+// Uses a two-pass approach to account for scroll indicators reducing the effective viewport.
+func (m *Model) ensureTaskCursorVisible(maxLines int) {
+	if maxLines <= 0 {
+		return
+	}
+	items := m.getVisibleTaskItems()
+
+	// If cursor is above viewport, scroll up
+	if m.taskCursor < m.taskScrollOffset {
+		m.taskScrollOffset = m.taskCursor
+	}
+	// If cursor is below viewport, scroll down (first pass with raw maxLines)
+	if m.taskCursor >= m.taskScrollOffset+maxLines {
+		m.taskScrollOffset = m.taskCursor - maxLines + 1
+	}
+
+	// Second pass: account for scroll indicators reducing visible content.
+	// When scrollOffset > 0, the top indicator takes 1 line; when items extend
+	// below the visible area, the bottom indicator takes 1 line.
+	if len(items) > maxLines {
+		effective := maxLines
+		if m.taskScrollOffset > 0 {
+			effective--
+		}
+		if m.taskScrollOffset+effective < len(items) {
+			effective--
+		}
+		if effective < 1 {
+			effective = 1
+		}
+		if m.taskCursor >= m.taskScrollOffset+effective {
+			m.taskScrollOffset = m.taskCursor - effective + 1
+		}
+	}
+
+	// Clamp scroll offset
+	maxScroll := taskPanelMaxScroll(len(items), maxLines)
+	if m.taskScrollOffset > maxScroll {
+		m.taskScrollOffset = maxScroll
+	}
+	if m.taskScrollOffset < 0 {
+		m.taskScrollOffset = 0
+	}
+}
+
+// clampTaskScrollOffset clamps the task scroll offset after item count changes.
+func (m *Model) clampTaskScrollOffset(maxLines int) {
+	items := m.getVisibleTaskItems()
+	maxScroll := taskPanelMaxScroll(len(items), maxLines)
+	if m.taskScrollOffset > maxScroll {
+		m.taskScrollOffset = maxScroll
+	}
+	if m.taskScrollOffset < 0 {
+		m.taskScrollOffset = 0
+	}
+}
+
+// taskPanelViewportLines returns the number of content lines available in the task panel.
+func (m Model) taskPanelViewportLines() int {
+	height := m.getTaskPanelHeight()
+	maxLines := height - 3 // header(1) + borders(2)
+	if m.taskSearchMode || m.taskSearchQuery != "" {
+		maxLines-- // search bar takes 1 line
+	}
+	if maxLines < 1 {
+		maxLines = 1
+	}
+	return maxLines
 }
 
 // getPreviewHeight returns the height to use for the preview pane (bottom layout).
@@ -1647,6 +1871,7 @@ func (m *Model) nextMatch() {
 	}
 	m.currentMatchIdx = (m.currentMatchIdx + 1) % len(m.searchMatches)
 	m.cursor = m.searchMatches[m.currentMatchIdx]
+	m.ensureSessionCursorVisible(m.sessionListMaxVisible())
 }
 
 // prevMatch moves the cursor to the previous search match, wrapping around.
@@ -1659,6 +1884,7 @@ func (m *Model) prevMatch() {
 		m.currentMatchIdx = len(m.searchMatches) - 1
 	}
 	m.cursor = m.searchMatches[m.currentMatchIdx]
+	m.ensureSessionCursorVisible(m.sessionListMaxVisible())
 }
 
 // clearSearchState resets all search-related fields.
@@ -1678,6 +1904,7 @@ func (m Model) updateSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		// Clear all search state and exit search mode
 		m.clearSearchState()
+		m.sessionScrollOffset = 0
 		return m, nil
 
 	case "up", "k":
@@ -1688,6 +1915,7 @@ func (m Model) updateSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			} else {
 				m.cursor = len(filteredSessions) - 1
 			}
+			m.ensureSessionCursorVisible(m.sessionListMaxVisible())
 		}
 		return m, nil
 
@@ -1699,6 +1927,7 @@ func (m Model) updateSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			} else {
 				m.cursor = 0
 			}
+			m.ensureSessionCursorVisible(m.sessionListMaxVisible())
 		}
 		return m, nil
 
@@ -1737,9 +1966,77 @@ func (m Model) updateSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if len(m.searchMatches) > 0 {
 		m.currentMatchIdx = 0
 		m.cursor = m.searchMatches[0]
+		m.ensureSessionCursorVisible(m.sessionListMaxVisible())
 	}
 
 	return m, cmd
+}
+
+// ensureSessionCursorVisible adjusts sessionScrollOffset so the cursor is within the visible viewport.
+// Since session rows have variable height, this uses session index rather than line count.
+// The maxSessions parameter is the maximum number of sessions that can fit in the viewport.
+func (m *Model) ensureSessionCursorVisible(maxSessions int) {
+	if maxSessions <= 0 {
+		return
+	}
+	filteredSessions := m.getFilteredSessions()
+	if len(filteredSessions) == 0 {
+		m.sessionScrollOffset = 0
+		return
+	}
+	// If cursor is above viewport, scroll up
+	if m.cursor < m.sessionScrollOffset {
+		m.sessionScrollOffset = m.cursor
+	}
+	// If cursor is below viewport, scroll down
+	if m.cursor >= m.sessionScrollOffset+maxSessions {
+		m.sessionScrollOffset = m.cursor - maxSessions + 1
+	}
+	// Clamp scroll offset
+	maxScroll := len(filteredSessions) - maxSessions
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if m.sessionScrollOffset > maxScroll {
+		m.sessionScrollOffset = maxScroll
+	}
+	if m.sessionScrollOffset < 0 {
+		m.sessionScrollOffset = 0
+	}
+}
+
+// sessionRowEstimatedHeight is the estimated number of lines per session row.
+// Sessions have 2-5 lines depending on git info, metrics, and message.
+const sessionRowEstimatedHeight = 3
+
+// sessionListMaxVisible returns the estimated number of sessions that fit in the available height.
+func (m Model) sessionListMaxVisible() int {
+	contentHeight := m.height - 8 // Header(3) + Footer(3) + spacing
+	if contentHeight < 5 {
+		contentHeight = 5
+	}
+
+	sessionListHeight := contentHeight
+	if m.taskPanelVisible && m.width >= previewMinTerminalWidth {
+		panelHeight := m.getTaskPanelHeight()
+		sessionListHeight = contentHeight - panelHeight - 1
+	} else if m.previewVisible && m.width >= previewMinTerminalWidth {
+		if m.previewLayout == PreviewLayoutBottom {
+			previewHeight := m.getPreviewHeight()
+			sessionListHeight = contentHeight - previewHeight - 1
+		}
+		// Side layout doesn't reduce session list height
+	}
+
+	if m.searchMode || m.searchQuery != "" {
+		sessionListHeight-- // Search bar takes 1 line
+	}
+
+	maxSessions := sessionListHeight / sessionRowEstimatedHeight
+	if maxSessions < 1 {
+		maxSessions = 1
+	}
+	return maxSessions
 }
 
 // selectedSessionName returns the name of the currently selected session, or empty string.
@@ -1756,12 +2053,14 @@ func (m Model) selectedSessionName() string {
 func (m *Model) preserveCursor(sessionName string) {
 	if sessionName == "" {
 		m.cursor = 0
+		m.sessionScrollOffset = 0
 		return
 	}
 	filtered := m.getFilteredSessions()
 	for i, s := range filtered {
 		if s.TmuxSession == sessionName {
 			m.cursor = i
+			m.ensureSessionCursorVisible(m.sessionListMaxVisible())
 			return
 		}
 	}
@@ -1771,6 +2070,7 @@ func (m *Model) preserveCursor(sessionName string) {
 	} else if len(filtered) == 0 {
 		m.cursor = 0
 	}
+	m.sessionScrollOffset = 0
 }
 
 // closeDialog resets dialog state.
@@ -1871,6 +2171,7 @@ func InitialModel() Model {
 		taskGroupsByProject: make(map[string][]task.TaskGroup),
 		taskCache:           task.NewResultCache(),
 		taskGlobalConfig:    globalTaskConfig,
+		previewAutoScroll:   true,
 	}
 }
 

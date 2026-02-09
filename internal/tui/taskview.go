@@ -148,6 +148,8 @@ func (m Model) isCurrentTaskSearchMatch(idx int) bool {
 
 // renderTaskPanelList renders the task list with collapsible groups.
 // When focused, shows a cursor. Groups respect taskExpandedGroups state.
+// Uses taskScrollOffset for viewport-aware rendering, showing only visible items.
+// Shows scroll indicators when content extends beyond the viewport.
 func (m Model) renderTaskPanelList(width, maxLines int) string {
 	var b strings.Builder
 	items := m.getVisibleTaskItems()
@@ -156,12 +158,42 @@ func (m Model) renderTaskPanelList(width, maxLines int) string {
 		return taskEmptyStyle.Render("  No tasks found")
 	}
 
-	lineCount := 0
-	for i, item := range items {
-		if lineCount >= maxLines {
-			break
-		}
+	// Determine visible range based on scroll offset
+	startIdx := m.taskScrollOffset
+	if startIdx > len(items) {
+		startIdx = len(items)
+	}
 
+	// Check if scroll indicators are needed and reduce content lines accordingly.
+	// Important: hasBelow must be checked AFTER reducing for hasAbove, because
+	// the top indicator reduces the number of visible items, making it more likely
+	// that items extend below the viewport.
+	hasAbove := startIdx > 0
+	contentLines := maxLines
+	if hasAbove {
+		contentLines--
+	}
+	hasBelow := startIdx+contentLines < len(items)
+	if hasBelow {
+		contentLines--
+	}
+	if contentLines < 1 {
+		contentLines = 1
+	}
+
+	endIdx := startIdx + contentLines
+	if endIdx > len(items) {
+		endIdx = len(items)
+	}
+
+	// Render top scroll indicator
+	if hasAbove {
+		b.WriteString(dimStyle.Render(fmt.Sprintf(scrollIndicatorAbove, startIdx)))
+		b.WriteString("\n")
+	}
+
+	for i := startIdx; i < endIdx; i++ {
+		item := items[i]
 		isCursorHere := m.taskPanelFocused && i == m.taskCursor
 		isMatch := m.taskSearchQuery != "" && m.isTaskSearchMatch(i)
 		isCurrentMatch := m.taskSearchQuery != "" && m.isCurrentTaskSearchMatch(i)
@@ -182,7 +214,13 @@ func (m Model) renderTaskPanelList(width, maxLines int) string {
 
 		b.WriteString(line)
 		b.WriteString("\n")
-		lineCount++
+	}
+
+	// Render bottom scroll indicator
+	if hasBelow {
+		belowCount := len(items) - endIdx
+		b.WriteString(dimStyle.Render(fmt.Sprintf(scrollIndicatorBelow, belowCount)))
+		b.WriteString("\n")
 	}
 
 	return b.String()

@@ -43,6 +43,18 @@ const (
 
 	// sessionListMinHeight is the minimum height for the session list when preview is shown (bottom layout)
 	sessionListMinHeight = 5
+
+	// taskPanelPageScrollAmt is the number of items to scroll per PgUp/PgDn press in the task panel
+	taskPanelPageScrollAmt = 10
+
+	// previewPageScrollAmt is the number of lines to scroll per PgUp/PgDn press in the preview pane
+	previewPageScrollAmt = 10
+)
+
+// Scroll indicator format strings
+const (
+	scrollIndicatorAbove = "↑ %d more above"
+	scrollIndicatorBelow = "↓ %d more below"
 )
 
 // Preview timing constants

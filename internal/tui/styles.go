@@ -68,6 +68,11 @@ var (
 	previewEmptyStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("241")).
 				Italic(true)
+
+	previewFocusedBoxStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("46")).
+				Padding(0, 1)
 )
 
 // Search bar style
