@@ -39,8 +39,8 @@ func (m Model) View() string {
 	b.WriteString(m.renderHeader())
 	b.WriteString("\n\n")
 
-	// Search bar (when active)
-	if m.searchMode {
+	// Search bar (when actively typing or search persisted after Enter)
+	if m.searchMode || m.searchQuery != "" {
 		b.WriteString(m.renderSearchBar())
 		b.WriteString("\n")
 	}
@@ -120,6 +120,34 @@ func (m Model) View() string {
 	b.WriteString(m.renderFooter())
 
 	return b.String()
+}
+
+// searchMatchIndicator is the left-side gutter character used to mark search matches.
+const searchMatchIndicator = "▎"
+
+// renderSessionRow renders a session row with optional search match highlighting.
+// Matches are indicated by a colored left-side gutter bar rather than full-row styling.
+func (m Model) renderSessionRow(s session.Info, selected, isMatch, isCurrentMatch bool, width int) string {
+	rendered := m.renderSession(s, selected, width)
+
+	if isCurrentMatch {
+		indicator := searchCurrentMatchIndicatorStyle.Render(searchMatchIndicator)
+		lines := strings.Split(rendered, "\n")
+		for i, line := range lines {
+			lines[i] = indicator + line
+		}
+		return strings.Join(lines, "\n")
+	}
+	if isMatch {
+		indicator := searchMatchIndicatorStyle.Render(searchMatchIndicator)
+		lines := strings.Split(rendered, "\n")
+		for i, line := range lines {
+			lines[i] = indicator + line
+		}
+		return strings.Join(lines, "\n")
+	}
+
+	return rendered
 }
 
 // renderSession renders a single session row with icon, name, age, cwd, and message.
@@ -505,10 +533,48 @@ func (m Model) renderPreview(width, height int) string {
 	return strings.Join(renderedLines, "\n")
 }
 
-// renderSearchBar renders the search input bar when search mode is active.
+// renderSearchBar renders the search input bar when search mode is active
+// or when a search query persists after Enter.
+// Shows match counter [X/Y] or "No matches" when a query is entered.
 func (m Model) renderSearchBar() string {
-	content := "/ " + m.searchInput.View()
+	var content string
+	if m.searchMode {
+		// Actively typing: show the text input
+		content = "/ " + m.searchInput.View()
+	} else {
+		// Persisted search (after Enter): show the query as static text
+		content = "/ " + m.searchQuery
+	}
+
+	// Show match counter when there's a query
+	if m.searchQuery != "" {
+		if len(m.searchMatches) > 0 {
+			counter := fmt.Sprintf(" [%d/%d]", m.currentMatchIdx+1, len(m.searchMatches))
+			content += searchMatchCountStyle.Render(counter)
+		} else {
+			content += " " + searchNoMatchStyle.Render("No matches")
+		}
+	}
+
 	return searchBarStyle.Width(m.width - 2).Render(content)
+}
+
+// isSearchMatch checks if a session index is in the searchMatches list.
+func (m Model) isSearchMatch(idx int) bool {
+	for _, matchIdx := range m.searchMatches {
+		if matchIdx == idx {
+			return true
+		}
+	}
+	return false
+}
+
+// isCurrentSearchMatch checks if a session index is the current search match.
+func (m Model) isCurrentSearchMatch(idx int) bool {
+	if len(m.searchMatches) == 0 {
+		return false
+	}
+	return m.searchMatches[m.currentMatchIdx] == idx
 }
 
 // renderSessionList renders the session list portion of the view.
@@ -521,8 +587,6 @@ func (m Model) renderSessionList(width int) string {
 		var message string
 		if len(m.sessions) == 0 {
 			message = noSessionsMessage
-		} else if m.searchQuery != "" {
-			message = fmt.Sprintf("  No sessions matching \"%s\"", m.searchQuery)
 		} else if m.statusFilter != "" {
 			message = fmt.Sprintf("  No %s sessions", m.statusFilter)
 		} else {
@@ -533,7 +597,9 @@ func (m Model) renderSessionList(width int) string {
 	} else {
 		for i, s := range filteredSessions {
 			selected := i == m.cursor
-			b.WriteString(m.renderSession(s, selected, width))
+			isMatch := m.searchQuery != "" && m.isSearchMatch(i)
+			isCurrentMatch := m.searchQuery != "" && m.isCurrentSearchMatch(i)
+			b.WriteString(m.renderSessionRow(s, selected, isMatch, isCurrentMatch, width))
 			b.WriteString("\n")
 		}
 	}

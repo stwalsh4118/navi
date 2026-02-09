@@ -58,12 +58,14 @@ type Model struct {
 	filterMode session.FilterMode // Current session filter mode
 
 	// Search and filter state
-	searchQuery  string          // Current search text
-	searchMode   bool            // Whether search input is active
-	searchInput  textinput.Model // Text input for search
-	statusFilter string          // Active status filter (empty = show all)
-	hideOffline  bool            // Whether to hide offline/done sessions (default false = show all)
-	sortMode     SortMode        // Active sort mode
+	searchQuery    string          // Current search text
+	searchMode     bool            // Whether search input is active
+	searchInput    textinput.Model // Text input for search
+	searchMatches  []int           // Indices of matching sessions in the filtered list
+	currentMatchIdx int            // Position within searchMatches (which match is "current")
+	statusFilter   string          // Active status filter (empty = show all)
+	hideOffline    bool            // Whether to hide offline/done sessions (default false = show all)
+	sortMode       SortMode        // Active sort mode
 
 	// Task panel state
 	taskPanelVisible    bool                            // Whether task panel is shown below session list
@@ -72,9 +74,11 @@ type Model struct {
 	taskPanelHeight     int                             // Height of task panel in rows
 	taskCursor          int                             // Cursor position in flat task item list
 	taskExpandedGroups  map[string]bool                 // Which groups are expanded (collapsed by default)
-	taskSearchMode      bool                            // Whether task search input is active
-	taskSearchQuery     string                          // Current task search text
-	taskSearchInput     textinput.Model                 // Text input for task search
+	taskSearchMode       bool                            // Whether task search input is active
+	taskSearchQuery      string                          // Current task search text
+	taskSearchInput      textinput.Model                 // Text input for task search
+	taskSearchMatches    []int                           // Indices of matching task items in visible list
+	taskCurrentMatchIdx  int                             // Position within taskSearchMatches
 	taskGroups          []task.TaskGroup                // Displayed task groups (for focused project)
 	taskGroupsByProject map[string][]task.TaskGroup     // All task groups keyed by project dir
 	taskFocusedProject  string                          // Project dir whose tasks are displayed
@@ -280,6 +284,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, pollSessions
 
 		case "n":
+			// When search query is active, jump to next match
+			if m.searchQuery != "" {
+				m.nextMatch()
+				return m, nil
+			}
 			// Open new session dialog
 			m.dialogMode = DialogNewSession
 			m.dialogError = ""
@@ -288,6 +297,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.dirInput.SetValue(getDefaultDirectory())
 			m.focusedInput = focusName
 			m.skipPermissions = false
+			return m, nil
+
+		case "N":
+			// When search query is active, jump to previous match
+			if m.searchQuery != "" {
+				m.prevMatch()
+				return m, nil
+			}
 			return m, nil
 
 		case "x":
@@ -456,6 +473,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "esc":
+			// Clear search state first if search is active (persisted after Enter)
+			if m.searchQuery != "" {
+				m.clearSearchState()
+				return m, nil
+			}
 			// Clear active filters
 			if m.statusFilter != "" || m.hideOffline {
 				m.statusFilter = ""
@@ -532,8 +554,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				// Clear focus and search when hiding
 				m.taskPanelFocused = false
-				m.taskSearchMode = false
-				m.taskSearchQuery = ""
+				m.clearTaskSearchState()
 			}
 			return m, nil
 
@@ -646,6 +667,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cursor = len(filteredSessions) - 1
 		} else if len(filteredSessions) == 0 {
 			m.cursor = 0
+		}
+
+		// Recompute search matches when session list changes
+		if m.searchQuery != "" {
+			m.computeSearchMatches()
 		}
 
 		if needsGitPoll {
@@ -958,8 +984,18 @@ func (m Model) updateTaskPanelFocus(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg.String() {
-	case "tab", "esc":
+	case "tab":
 		// Return focus to session list
+		m.taskPanelFocused = false
+		return m, nil
+
+	case "esc":
+		// Clear task search first if active, then return focus
+		if m.taskSearchQuery != "" {
+			m.clearTaskSearchState()
+			m.taskCursor = 0
+			return m, nil
+		}
 		m.taskPanelFocused = false
 		return m, nil
 
@@ -968,6 +1004,22 @@ func (m Model) updateTaskPanelFocus(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.taskPanelVisible = false
 		m.taskPanelUserEnabled = false
 		m.taskPanelFocused = false
+		return m, nil
+
+	case "n":
+		// Jump to next task match when search query is active
+		if m.taskSearchQuery != "" {
+			m.nextTaskMatch()
+			return m, nil
+		}
+		return m, nil
+
+	case "N":
+		// Jump to previous task match when search query is active
+		if m.taskSearchQuery != "" {
+			m.prevTaskMatch()
+			return m, nil
+		}
 		return m, nil
 
 	case "up", "k":
@@ -1067,11 +1119,8 @@ func (m Model) openTaskDetail(item *taskItem) (tea.Model, tea.Cmd) {
 func (m Model) updateTaskSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
-		// Clear search and exit search mode (stay in focus mode)
-		m.taskSearchMode = false
-		m.taskSearchQuery = ""
-		m.taskSearchInput.SetValue("")
-		m.taskSearchInput.Blur()
+		// Clear all task search state (stay in focus mode)
+		m.clearTaskSearchState()
 		m.taskCursor = 0
 		return m, nil
 
@@ -1084,9 +1133,10 @@ func (m Model) updateTaskSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "enter":
-		// Accept search and return to normal focus navigation
+		// Exit input mode but keep search state (search persists like vim)
 		m.taskSearchMode = false
 		m.taskSearchInput.Blur()
+		m.computeTaskSearchMatches()
 		return m, nil
 
 	case " ":
@@ -1110,6 +1160,15 @@ func (m Model) updateTaskSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.taskSearchInput, cmd = m.taskSearchInput.Update(msg)
 	m.taskSearchQuery = m.taskSearchInput.Value()
+
+	// Recompute matches after query change
+	m.computeTaskSearchMatches()
+
+	// Jump cursor to first match if matches exist
+	if len(m.taskSearchMatches) > 0 {
+		m.taskCurrentMatchIdx = 0
+		m.taskCursor = m.taskSearchMatches[0]
+	}
 
 	// Clamp cursor after query change
 	items := m.getVisibleTaskItems()
@@ -1136,24 +1195,41 @@ type taskItem struct {
 }
 
 // getVisibleTaskItems returns the flat list of navigable items based on expand state.
-// When a task search query is active, filters groups/tasks by fuzzy match and
-// auto-expands groups that contain matching tasks.
+// When a task search query is active, all items remain visible but groups containing
+// matches are auto-expanded. Match highlighting is handled separately via taskSearchMatches.
 func (m Model) getVisibleTaskItems() []taskItem {
 	var items []taskItem
 	groupNum := 0
 
 	if m.taskSearchQuery != "" {
-		// Search mode: filter and auto-expand matching groups
+		// Search mode: show all groups, auto-expand groups that contain matches
 		for _, g := range m.taskGroups {
-			groupMatches, _ := fuzzyMatch(m.taskSearchQuery, g.Title)
+			groupMatches := exactMatch(m.taskSearchQuery, g.Title)
 
-			// Find matching tasks in this group
-			var matchingTasks []taskItem
+			// Check if any tasks in this group match
+			hasMatchingTasks := false
 			for _, t := range g.Tasks {
-				titleMatch, _ := fuzzyMatch(m.taskSearchQuery, t.Title)
-				idMatch, _ := fuzzyMatch(m.taskSearchQuery, t.ID)
-				if titleMatch || idMatch {
-					matchingTasks = append(matchingTasks, taskItem{
+				if exactMatch(m.taskSearchQuery, t.Title) || exactMatch(m.taskSearchQuery, t.ID) {
+					hasMatchingTasks = true
+					break
+				}
+			}
+
+			groupNum++
+			items = append(items, taskItem{
+				isGroup: true,
+				groupID: g.ID,
+				title:   g.Title,
+				status:  g.Status,
+				url:     g.URL,
+				number:  groupNum,
+			})
+
+			// Auto-expand groups that contain matches or match themselves
+			shouldExpand := groupMatches || hasMatchingTasks || m.taskExpandedGroups[g.ID]
+			if shouldExpand {
+				for _, t := range g.Tasks {
+					items = append(items, taskItem{
 						isGroup: false,
 						groupID: g.ID,
 						taskID:  t.ID,
@@ -1161,35 +1237,6 @@ func (m Model) getVisibleTaskItems() []taskItem {
 						status:  t.Status,
 						url:     t.URL,
 					})
-				}
-			}
-
-			// Show group if it matches or has matching tasks
-			if groupMatches || len(matchingTasks) > 0 {
-				groupNum++
-				items = append(items, taskItem{
-					isGroup: true,
-					groupID: g.ID,
-					title:   g.Title,
-					status:  g.Status,
-					url:     g.URL,
-					number:  groupNum,
-				})
-				// Auto-expand: show matching tasks (or all tasks if group title matched)
-				if groupMatches && len(matchingTasks) == 0 {
-					// Group title matched but no individual tasks - show all tasks
-					for _, t := range g.Tasks {
-						items = append(items, taskItem{
-							isGroup: false,
-							groupID: g.ID,
-							taskID:  t.ID,
-							title:   t.Title,
-							status:  t.Status,
-							url:     t.URL,
-						})
-					}
-				} else {
-					items = append(items, matchingTasks...)
 				}
 			}
 		}
@@ -1221,6 +1268,63 @@ func (m Model) getVisibleTaskItems() []taskItem {
 		}
 	}
 	return items
+}
+
+// computeTaskSearchMatches recomputes the list of matching task item indices.
+func (m *Model) computeTaskSearchMatches() {
+	items := m.getVisibleTaskItems()
+	m.taskSearchMatches = nil
+	if m.taskSearchQuery == "" {
+		m.taskCurrentMatchIdx = 0
+		return
+	}
+	for i, item := range items {
+		if item.isGroup {
+			if exactMatch(m.taskSearchQuery, item.title) {
+				m.taskSearchMatches = append(m.taskSearchMatches, i)
+			}
+		} else {
+			if exactMatch(m.taskSearchQuery, item.title) || exactMatch(m.taskSearchQuery, item.taskID) {
+				m.taskSearchMatches = append(m.taskSearchMatches, i)
+			}
+		}
+	}
+	if len(m.taskSearchMatches) == 0 {
+		m.taskCurrentMatchIdx = 0
+	} else if m.taskCurrentMatchIdx >= len(m.taskSearchMatches) {
+		m.taskCurrentMatchIdx = 0
+	}
+}
+
+// nextTaskMatch moves the task cursor to the next search match, wrapping around.
+func (m *Model) nextTaskMatch() {
+	if len(m.taskSearchMatches) == 0 {
+		return
+	}
+	m.taskCurrentMatchIdx = (m.taskCurrentMatchIdx + 1) % len(m.taskSearchMatches)
+	m.taskCursor = m.taskSearchMatches[m.taskCurrentMatchIdx]
+}
+
+// prevTaskMatch moves the task cursor to the previous search match, wrapping around.
+func (m *Model) prevTaskMatch() {
+	if len(m.taskSearchMatches) == 0 {
+		return
+	}
+	m.taskCurrentMatchIdx--
+	if m.taskCurrentMatchIdx < 0 {
+		m.taskCurrentMatchIdx = len(m.taskSearchMatches) - 1
+	}
+	m.taskCursor = m.taskSearchMatches[m.taskCurrentMatchIdx]
+}
+
+// clearTaskSearchState resets all task search-related fields.
+func (m *Model) clearTaskSearchState() {
+	m.taskSearchMode = false
+	m.taskSearchQuery = ""
+	m.taskSearchInput.SetValue("")
+	m.taskSearchInput.Blur()
+	m.taskSearchMatches = nil
+	m.taskCurrentMatchIdx = 0
 }
 
 // getSelectedTaskItem returns the currently selected task item, or nil.
@@ -1508,17 +1612,57 @@ func (m Model) openGitLink() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// computeSearchMatches recomputes the list of matching session indices
+// based on the current search query and filtered session list.
+func (m *Model) computeSearchMatches() {
+	filteredSessions := m.getFilteredSessions()
+	m.searchMatches = findMatches(filteredSessions, m.searchQuery)
+	// Clamp currentMatchIdx
+	if len(m.searchMatches) == 0 {
+		m.currentMatchIdx = 0
+	} else if m.currentMatchIdx >= len(m.searchMatches) {
+		m.currentMatchIdx = 0
+	}
+}
+
+// nextMatch moves the cursor to the next search match, wrapping around.
+func (m *Model) nextMatch() {
+	if len(m.searchMatches) == 0 {
+		return
+	}
+	m.currentMatchIdx = (m.currentMatchIdx + 1) % len(m.searchMatches)
+	m.cursor = m.searchMatches[m.currentMatchIdx]
+}
+
+// prevMatch moves the cursor to the previous search match, wrapping around.
+func (m *Model) prevMatch() {
+	if len(m.searchMatches) == 0 {
+		return
+	}
+	m.currentMatchIdx--
+	if m.currentMatchIdx < 0 {
+		m.currentMatchIdx = len(m.searchMatches) - 1
+	}
+	m.cursor = m.searchMatches[m.currentMatchIdx]
+}
+
+// clearSearchState resets all search-related fields.
+func (m *Model) clearSearchState() {
+	m.searchMode = false
+	m.searchQuery = ""
+	m.searchInput.SetValue("")
+	m.searchInput.Blur()
+	m.searchMatches = nil
+	m.currentMatchIdx = 0
+}
+
 // updateSearchMode handles key messages when search mode is active.
 // Navigation keys (up/down/enter) still work; other keys go to the search input.
 func (m Model) updateSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
-		// Clear search and exit search mode
-		m.searchMode = false
-		m.searchQuery = ""
-		m.searchInput.SetValue("")
-		m.searchInput.Blur()
-		m.cursor = 0
+		// Clear all search state and exit search mode
+		m.clearSearchState()
 		return m, nil
 
 	case "up", "k":
@@ -1544,6 +1688,12 @@ func (m Model) updateSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "enter":
+		// Exit input mode but keep search state (search persists like vim)
+		m.searchMode = false
+		m.searchInput.Blur()
+		// Recompute matches so they persist after exiting input mode
+		m.computeSearchMatches()
+
 		filteredSessions := m.getFilteredSessions()
 		if len(filteredSessions) > 0 && m.cursor < len(filteredSessions) {
 			s := filteredSessions[m.cursor]
@@ -1565,14 +1715,13 @@ func (m Model) updateSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.searchInput, cmd = m.searchInput.Update(msg)
 	m.searchQuery = m.searchInput.Value()
 
-	// Clamp cursor after search query change
-	filteredSessions := m.getFilteredSessions()
-	if m.cursor >= len(filteredSessions) {
-		if len(filteredSessions) > 0 {
-			m.cursor = len(filteredSessions) - 1
-		} else {
-			m.cursor = 0
-		}
+	// Recompute matches after query change
+	m.computeSearchMatches()
+
+	// Jump cursor to first match if matches exist
+	if len(m.searchMatches) > 0 {
+		m.currentMatchIdx = 0
+		m.cursor = m.searchMatches[0]
 	}
 
 	return m, cmd
@@ -1649,10 +1798,8 @@ func (m Model) getFilteredSessions() []session.Info {
 		result = filterOffline(result)
 	}
 
-	// Step 4: Fuzzy search
-	if m.searchQuery != "" {
-		result = fuzzyFilter(result, m.searchQuery)
-	}
+	// Step 4: Search no longer filters — all sessions remain visible.
+	// Match indices are computed separately via computeSearchMatches().
 
 	// Step 5: Sort
 	result = sortSessions(result, m.sortMode)

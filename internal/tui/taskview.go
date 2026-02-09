@@ -36,9 +36,23 @@ func (m Model) renderTaskPanel(width, height int) string {
 		contentWidth = 10
 	}
 
-	// Search bar (when active)
-	if m.taskSearchMode {
-		searchContent := "/ " + m.taskSearchInput.View()
+	// Search bar (when actively typing or search persisted after Enter)
+	if m.taskSearchMode || m.taskSearchQuery != "" {
+		var searchContent string
+		if m.taskSearchMode {
+			searchContent = "/ " + m.taskSearchInput.View()
+		} else {
+			searchContent = "/ " + m.taskSearchQuery
+		}
+		// Show match counter
+		if m.taskSearchQuery != "" {
+			if len(m.taskSearchMatches) > 0 {
+				counter := fmt.Sprintf(" [%d/%d]", m.taskCurrentMatchIdx+1, len(m.taskSearchMatches))
+				searchContent += searchMatchCountStyle.Render(counter)
+			} else {
+				searchContent += " " + searchNoMatchStyle.Render("No matches")
+			}
+		}
 		b.WriteString(searchContent)
 		b.WriteString("\n")
 	}
@@ -56,8 +70,6 @@ func (m Model) renderTaskPanel(width, height int) string {
 		b.WriteString(taskErrorStyle.Render(fmt.Sprintf("  ✗ %s: %s", name, err.Error())))
 	} else if len(m.taskGroups) == 0 {
 		b.WriteString(taskEmptyStyle.Render("  No tasks found"))
-	} else if m.taskSearchQuery != "" && len(m.getVisibleTaskItems()) == 0 {
-		b.WriteString(taskEmptyStyle.Render(fmt.Sprintf("  No tasks matching \"%s\"", m.taskSearchQuery)))
 	} else {
 		// Render task list with collapsible groups
 		maxLines := height - 3 // header(1) + borders(2)
@@ -116,6 +128,24 @@ func (m Model) renderTaskPanelHeader(width int) string {
 	return strings.Join(headerParts, " ")
 }
 
+// isTaskSearchMatch checks if a task item index is in the taskSearchMatches list.
+func (m Model) isTaskSearchMatch(idx int) bool {
+	for _, matchIdx := range m.taskSearchMatches {
+		if matchIdx == idx {
+			return true
+		}
+	}
+	return false
+}
+
+// isCurrentTaskSearchMatch checks if a task item index is the current task search match.
+func (m Model) isCurrentTaskSearchMatch(idx int) bool {
+	if len(m.taskSearchMatches) == 0 {
+		return false
+	}
+	return m.taskSearchMatches[m.taskCurrentMatchIdx] == idx
+}
+
 // renderTaskPanelList renders the task list with collapsible groups.
 // When focused, shows a cursor. Groups respect taskExpandedGroups state.
 func (m Model) renderTaskPanelList(width, maxLines int) string {
@@ -133,12 +163,24 @@ func (m Model) renderTaskPanelList(width, maxLines int) string {
 		}
 
 		isCursorHere := m.taskPanelFocused && i == m.taskCursor
+		isMatch := m.taskSearchQuery != "" && m.isTaskSearchMatch(i)
+		isCurrentMatch := m.taskSearchQuery != "" && m.isCurrentTaskSearchMatch(i)
 
+		var line string
 		if item.isGroup {
-			b.WriteString(m.renderTaskPanelGroupHeader(item, isCursorHere, width))
+			line = m.renderTaskPanelGroupHeader(item, isCursorHere, width)
 		} else {
-			b.WriteString(m.renderTaskPanelRow(item, isCursorHere, width))
+			line = m.renderTaskPanelRow(item, isCursorHere, width)
 		}
+
+		// Apply search match highlighting via left-side gutter indicator
+		if isCurrentMatch && !isCursorHere {
+			line = searchCurrentMatchIndicatorStyle.Render(searchMatchIndicator) + line
+		} else if isMatch && !isCursorHere {
+			line = searchMatchIndicatorStyle.Render(searchMatchIndicator) + line
+		}
+
+		b.WriteString(line)
 		b.WriteString("\n")
 		lineCount++
 	}
