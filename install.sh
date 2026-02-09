@@ -33,13 +33,23 @@ else
     exit 1
 fi
 
+# Copy tool-tracker hook script
+if [ -f "$SCRIPT_DIR/hooks/tool-tracker.sh" ]; then
+    cp "$SCRIPT_DIR/hooks/tool-tracker.sh" "$HOOKS_DIR/"
+    chmod +x "$HOOKS_DIR/tool-tracker.sh"
+    echo "✓ Installed tool-tracker.sh hook"
+else
+    echo "✗ Error: hooks/tool-tracker.sh not found in $SCRIPT_DIR"
+    exit 1
+fi
+
 # Claude Code settings configuration
 CLAUDE_CONFIG_DIR="$HOME/.claude"
 SETTINGS_FILE="$CLAUDE_CONFIG_DIR/settings.json"
 NAVI_CONFIG_FILE="$HOOKS_DIR/config.json"
 
 # Hook types that navi uses
-HOOK_TYPES=("UserPromptSubmit" "Stop" "PermissionRequest" "SessionEnd")
+HOOK_TYPES=("UserPromptSubmit" "Stop" "PermissionRequest" "SessionEnd" "PostToolUse" "SubagentStart" "SubagentStop" "TeammateIdle" "TaskCompleted")
 
 # Read hook config from hooks/config.json shipped with navi
 HOOK_CONFIG=$(cat "$SCRIPT_DIR/hooks/config.json")

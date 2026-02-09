@@ -13,6 +13,8 @@ const (
 	StatusWaiting    = "waiting"
 	StatusPermission = "permission"
 	StatusWorking    = "working"
+	StatusIdle       = "idle"
+	StatusStopped    = "stopped"
 )
 
 // Polling constants
@@ -25,6 +27,19 @@ const (
 // Tests can override this to use a temporary directory.
 var StatusDir = DefaultStatusDir
 
+// AgentInfo represents the status of a single agent in a team.
+type AgentInfo struct {
+	Name      string `json:"name"`
+	Status    string `json:"status"`
+	Timestamp int64  `json:"timestamp"`
+}
+
+// TeamInfo represents an active agent team within a session.
+type TeamInfo struct {
+	Name   string      `json:"name"`
+	Agents []AgentInfo `json:"agents"`
+}
+
 // Info represents the status data for a single Claude Code session.
 type Info struct {
 	TmuxSession string           `json:"tmux_session"`
@@ -35,6 +50,7 @@ type Info struct {
 	Git         *git.Info        `json:"git,omitempty"`
 	Remote      string           `json:"remote,omitempty"`
 	Metrics     *metrics.Metrics `json:"metrics,omitempty"`
+	Team        *TeamInfo        `json:"team,omitempty"`
 }
 
 // FilterMode represents the session filter state.
@@ -46,12 +62,26 @@ const (
 	FilterRemote                   // Show only remote sessions
 )
 
+// HasPriorityTeammate returns true if any agent in the session's team
+// has a priority status (waiting or permission).
+func HasPriorityTeammate(s Info) bool {
+	if s.Team == nil || len(s.Team.Agents) == 0 {
+		return false
+	}
+	for _, agent := range s.Team.Agents {
+		if agent.Status == StatusWaiting || agent.Status == StatusPermission {
+			return true
+		}
+	}
+	return false
+}
+
 // SortSessions sorts sessions with priority statuses (waiting, permission) first,
 // then by timestamp descending (most recent first).
 func SortSessions(sessions []Info) {
 	sort.Slice(sessions, func(i, j int) bool {
-		iPriority := sessions[i].Status == StatusWaiting || sessions[i].Status == StatusPermission
-		jPriority := sessions[j].Status == StatusWaiting || sessions[j].Status == StatusPermission
+		iPriority := sessions[i].Status == StatusWaiting || sessions[i].Status == StatusPermission || HasPriorityTeammate(sessions[i])
+		jPriority := sessions[j].Status == StatusWaiting || sessions[j].Status == StatusPermission || HasPriorityTeammate(sessions[j])
 
 		if iPriority != jPriority {
 			return iPriority

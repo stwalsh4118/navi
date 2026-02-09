@@ -1,6 +1,8 @@
 package session
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stwalsh4118/navi/internal/metrics"
@@ -122,6 +124,207 @@ func TestAggregateMetrics(t *testing.T) {
 		}
 		if result.Tools.Counts["Read"] != 18 {
 			t.Errorf("Read count = %d, want 18", result.Tools.Counts["Read"])
+		}
+	})
+}
+
+func TestHasPriorityTeammate(t *testing.T) {
+	t.Run("returns false when Team is nil", func(t *testing.T) {
+		s := Info{Team: nil}
+		if HasPriorityTeammate(s) {
+			t.Error("expected false for nil Team")
+		}
+	})
+
+	t.Run("returns false when Agents is empty", func(t *testing.T) {
+		s := Info{Team: &TeamInfo{Name: "test", Agents: []AgentInfo{}}}
+		if HasPriorityTeammate(s) {
+			t.Error("expected false for empty Agents")
+		}
+	})
+
+	t.Run("returns false when all agents working or idle", func(t *testing.T) {
+		s := Info{Team: &TeamInfo{
+			Name: "test",
+			Agents: []AgentInfo{
+				{Name: "a", Status: StatusWorking},
+				{Name: "b", Status: StatusIdle},
+			},
+		}}
+		if HasPriorityTeammate(s) {
+			t.Error("expected false when no priority agents")
+		}
+	})
+
+	t.Run("returns true when agent has waiting status", func(t *testing.T) {
+		s := Info{Team: &TeamInfo{
+			Name: "test",
+			Agents: []AgentInfo{
+				{Name: "a", Status: StatusWorking},
+				{Name: "b", Status: StatusWaiting},
+			},
+		}}
+		if !HasPriorityTeammate(s) {
+			t.Error("expected true for waiting agent")
+		}
+	})
+
+	t.Run("returns true when agent has permission status", func(t *testing.T) {
+		s := Info{Team: &TeamInfo{
+			Name: "test",
+			Agents: []AgentInfo{
+				{Name: "a", Status: StatusPermission},
+			},
+		}}
+		if !HasPriorityTeammate(s) {
+			t.Error("expected true for permission agent")
+		}
+	})
+}
+
+func TestSortSessionsWithTeamPriority(t *testing.T) {
+	t.Run("session with teammate permission sorts above plain working", func(t *testing.T) {
+		sessions := []Info{
+			{TmuxSession: "plain-working", Status: StatusWorking, Timestamp: 100},
+			{TmuxSession: "team-permission", Status: StatusWorking, Timestamp: 50, Team: &TeamInfo{
+				Name: "proj",
+				Agents: []AgentInfo{{Name: "a", Status: StatusPermission}},
+			}},
+		}
+		SortSessions(sessions)
+		if sessions[0].TmuxSession != "team-permission" {
+			t.Errorf("expected team-permission first, got %s", sessions[0].TmuxSession)
+		}
+	})
+
+	t.Run("session with teammate waiting sorts with own waiting", func(t *testing.T) {
+		sessions := []Info{
+			{TmuxSession: "plain-working", Status: StatusWorking, Timestamp: 200},
+			{TmuxSession: "own-waiting", Status: StatusWaiting, Timestamp: 100},
+			{TmuxSession: "team-waiting", Status: StatusWorking, Timestamp: 50, Team: &TeamInfo{
+				Name: "proj",
+				Agents: []AgentInfo{{Name: "a", Status: StatusWaiting}},
+			}},
+		}
+		SortSessions(sessions)
+		// Both priority sessions should be before plain-working
+		if sessions[2].TmuxSession != "plain-working" {
+			t.Errorf("expected plain-working last, got %s", sessions[2].TmuxSession)
+		}
+	})
+
+	t.Run("sessions without team sort as before", func(t *testing.T) {
+		sessions := []Info{
+			{TmuxSession: "a", Status: StatusWorking, Timestamp: 100},
+			{TmuxSession: "b", Status: StatusWaiting, Timestamp: 50},
+			{TmuxSession: "c", Status: StatusWorking, Timestamp: 25},
+		}
+		SortSessions(sessions)
+		if sessions[0].TmuxSession != "b" {
+			t.Errorf("expected waiting first, got %s", sessions[0].TmuxSession)
+		}
+		if sessions[2].TmuxSession != "c" {
+			t.Errorf("expected oldest working last, got %s", sessions[2].TmuxSession)
+		}
+	})
+}
+
+func TestStatusStoppedConstant(t *testing.T) {
+	if StatusStopped != "stopped" {
+		t.Errorf("StatusStopped = %q, want %q", StatusStopped, "stopped")
+	}
+}
+
+func TestHasPriorityTeammateIgnoresStoppedAgents(t *testing.T) {
+	t.Run("returns false when all agents are stopped", func(t *testing.T) {
+		s := Info{Team: &TeamInfo{
+			Name: "test",
+			Agents: []AgentInfo{
+				{Name: "a", Status: StatusStopped},
+				{Name: "b", Status: StatusStopped},
+			},
+		}}
+		if HasPriorityTeammate(s) {
+			t.Error("expected false when all agents are stopped")
+		}
+	})
+
+	t.Run("returns true when stopped agent coexists with waiting agent", func(t *testing.T) {
+		s := Info{Team: &TeamInfo{
+			Name: "test",
+			Agents: []AgentInfo{
+				{Name: "a", Status: StatusStopped},
+				{Name: "b", Status: StatusWaiting},
+			},
+		}}
+		if !HasPriorityTeammate(s) {
+			t.Error("expected true when a waiting agent exists alongside stopped")
+		}
+	})
+}
+
+func TestTeamInfoJSONRoundTrip(t *testing.T) {
+	t.Run("Info with Team marshals and unmarshals correctly", func(t *testing.T) {
+		// Test is just compilation + basic structure - JSON round-trip
+		info := Info{
+			TmuxSession: "test",
+			Status:      StatusWorking,
+			Timestamp:   1234567890,
+			Team: &TeamInfo{
+				Name: "my-team",
+				Agents: []AgentInfo{
+					{Name: "researcher", Status: StatusWorking, Timestamp: 1234567890},
+					{Name: "implementer", Status: StatusIdle, Timestamp: 1234567880},
+				},
+			},
+		}
+
+		// Marshal
+		data, err := json.Marshal(info)
+		if err != nil {
+			t.Fatalf("Marshal failed: %v", err)
+		}
+
+		// Verify team field is present
+		if !strings.Contains(string(data), `"team"`) {
+			t.Error("marshaled JSON should contain team field")
+		}
+
+		// Unmarshal
+		var decoded Info
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			t.Fatalf("Unmarshal failed: %v", err)
+		}
+
+		if decoded.Team == nil {
+			t.Fatal("decoded Team should not be nil")
+		}
+		if decoded.Team.Name != "my-team" {
+			t.Errorf("Team.Name = %q, want %q", decoded.Team.Name, "my-team")
+		}
+		if len(decoded.Team.Agents) != 2 {
+			t.Fatalf("Team.Agents length = %d, want 2", len(decoded.Team.Agents))
+		}
+		if decoded.Team.Agents[0].Name != "researcher" {
+			t.Errorf("Agent[0].Name = %q, want %q", decoded.Team.Agents[0].Name, "researcher")
+		}
+	})
+
+	t.Run("Info without Team omits team from JSON", func(t *testing.T) {
+		info := Info{
+			TmuxSession: "test",
+			Status:      StatusWorking,
+			Timestamp:   1234567890,
+			Team:        nil,
+		}
+
+		data, err := json.Marshal(info)
+		if err != nil {
+			t.Fatalf("Marshal failed: %v", err)
+		}
+
+		if strings.Contains(string(data), `"team"`) {
+			t.Error("marshaled JSON should NOT contain team field when nil")
 		}
 	})
 }

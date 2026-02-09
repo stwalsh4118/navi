@@ -22,7 +22,30 @@
     ],
     "PostToolUse": [
       {
-        "hooks": [{ "type": "command", "command": "~/.claude-sessions/hooks/tool-tracker.sh" }]
+        "hooks": [
+          { "type": "command", "command": "~/.claude-sessions/hooks/notify.sh working" },
+          { "type": "command", "command": "~/.claude-sessions/hooks/tool-tracker.sh" }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [{ "type": "command", "command": "~/.claude-sessions/hooks/notify.sh working" }]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [{ "type": "command", "command": "~/.claude-sessions/hooks/notify.sh stopped" }]
+      }
+    ],
+    "TeammateIdle": [
+      {
+        "hooks": [{ "type": "command", "command": "~/.claude-sessions/hooks/notify.sh idle" }]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "hooks": [{ "type": "command", "command": "~/.claude-sessions/hooks/notify.sh done" }]
       }
     ]
   }
