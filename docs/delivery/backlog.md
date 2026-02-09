@@ -36,7 +36,7 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 28 | User | As a user, I want a task view with pluggable providers so that I can see my project tasks from any system (GitHub Issues, Linear, markdown, etc.) directly in Navi | Done | [View Details](./28/prd.md) |
 | 29 | User | As a user, I want an in-app content viewer so that I can view files, diffs, and task details without leaving the TUI | Done | [View Details](./29/prd.md) |
 | 30 | User | As a user, I want task providers to supply file paths so that the content viewer can open task detail files from any provider without hardcoded path assumptions | Proposed | [View Details](./30/prd.md) |
-| 31 | User | As a user, I want vim-style exact-match search with next/previous cycling so that I can quickly locate specific sessions and tasks without fuzzy matching | Agreed | [View Details](./31/prd.md) |
+| 31 | User | As a user, I want vim-style exact-match search with next/previous cycling so that I can quickly locate specific sessions and tasks without fuzzy matching | Done | [View Details](./31/prd.md) |
 
 ## History Log
 
@@ -103,3 +103,4 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 2026-02-07 15:50:00 | 30 | Created | Provider-supplied file paths for content viewer - identified during PBI-29 PR review | User |
 | 2026-02-07 16:00:00 | 31 | Created | Vim-style exact-match search with next/previous cycling | User |
 | 2026-02-07 16:10:00 | 31 | Status Change | Proposed → Agreed - Approved for task breakdown | User |
+| 2026-02-09 16:12:00 | 31 | Status Change | Agreed → Done - All 6 tasks Done, all tests pass with -race, go vet clean | AI_Agent |
