@@ -704,3 +704,191 @@ func TestRenderGitDiffViaContentViewer(t *testing.T) {
 		}
 	})
 }
+
+func TestStatusIconIdle(t *testing.T) {
+	result := StatusIcon("idle")
+	if !strings.Contains(result, iconIdle) {
+		t.Errorf("StatusIcon(idle) should contain idle icon, got %q", result)
+	}
+}
+
+func TestStatusIconStopped(t *testing.T) {
+	result := StatusIcon("stopped")
+	if !strings.Contains(result, iconStopped) {
+		t.Errorf("StatusIcon(stopped) should contain stopped icon, got %q", result)
+	}
+}
+
+func TestRenderSessionWithTeam(t *testing.T) {
+	m := Model{width: 80, height: 24}
+
+	t.Run("session with team shows agent count badge", func(t *testing.T) {
+		s := session.Info{
+			TmuxSession: "test-session",
+			Status:      "working",
+			CWD:         "/tmp/test",
+			Timestamp:   time.Now().Unix(),
+			Team: &session.TeamInfo{
+				Name: "my-project",
+				Agents: []session.AgentInfo{
+					{Name: "researcher", Status: "working", Timestamp: time.Now().Unix()},
+					{Name: "implementer", Status: "idle", Timestamp: time.Now().Unix()},
+				},
+			},
+		}
+
+		result := m.renderSession(s, false, 80)
+		if !strings.Contains(result, "[2 agents]") {
+			t.Error("session with team should show agent count badge")
+		}
+	})
+
+	t.Run("session with team shows agent status icons and names", func(t *testing.T) {
+		s := session.Info{
+			TmuxSession: "test-session",
+			Status:      "working",
+			CWD:         "/tmp/test",
+			Timestamp:   time.Now().Unix(),
+			Team: &session.TeamInfo{
+				Name: "my-project",
+				Agents: []session.AgentInfo{
+					{Name: "researcher", Status: "working", Timestamp: time.Now().Unix()},
+					{Name: "tester", Status: "done", Timestamp: time.Now().Unix()},
+				},
+			},
+		}
+
+		result := m.renderSession(s, false, 80)
+		if !strings.Contains(result, "researcher") {
+			t.Error("should show agent name 'researcher'")
+		}
+		if !strings.Contains(result, "tester") {
+			t.Error("should show agent name 'tester'")
+		}
+	})
+
+	t.Run("session without team has no badge or agents line", func(t *testing.T) {
+		s := session.Info{
+			TmuxSession: "test-session",
+			Status:      "working",
+			CWD:         "/tmp/test",
+			Timestamp:   time.Now().Unix(),
+			Team:        nil,
+		}
+
+		result := m.renderSession(s, false, 80)
+		if strings.Contains(result, "agents]") {
+			t.Error("session without team should not show agent badge")
+		}
+	})
+
+	t.Run("session with stopped agents excludes them from badge count", func(t *testing.T) {
+		s := session.Info{
+			TmuxSession: "test-session",
+			Status:      "working",
+			CWD:         "/tmp/test",
+			Timestamp:   time.Now().Unix(),
+			Team: &session.TeamInfo{
+				Name: "my-project",
+				Agents: []session.AgentInfo{
+					{Name: "researcher", Status: "working", Timestamp: time.Now().Unix()},
+					{Name: "implementer", Status: session.StatusStopped, Timestamp: time.Now().Unix()},
+					{Name: "tester", Status: "idle", Timestamp: time.Now().Unix()},
+				},
+			},
+		}
+
+		result := m.renderSession(s, false, 80)
+		if !strings.Contains(result, "[2 agents]") {
+			t.Error("badge should show 2 agents (excluding stopped)")
+		}
+		if strings.Contains(result, "[3 agents]") {
+			t.Error("badge should NOT count stopped agents")
+		}
+	})
+
+	t.Run("session with all agents stopped shows team done", func(t *testing.T) {
+		s := session.Info{
+			TmuxSession: "test-session",
+			Status:      "working",
+			CWD:         "/tmp/test",
+			Timestamp:   time.Now().Unix(),
+			Team: &session.TeamInfo{
+				Name: "my-project",
+				Agents: []session.AgentInfo{
+					{Name: "researcher", Status: session.StatusStopped, Timestamp: time.Now().Unix()},
+					{Name: "implementer", Status: session.StatusStopped, Timestamp: time.Now().Unix()},
+				},
+			},
+		}
+
+		result := m.renderSession(s, false, 80)
+		if !strings.Contains(result, "[team done]") {
+			t.Error("should show [team done] when all agents are stopped")
+		}
+		if strings.Contains(result, "agents]") {
+			t.Error("should NOT show agent count when all stopped")
+		}
+	})
+
+	t.Run("session with empty team agents has no badge", func(t *testing.T) {
+		s := session.Info{
+			TmuxSession: "test-session",
+			Status:      "working",
+			CWD:         "/tmp/test",
+			Timestamp:   time.Now().Unix(),
+			Team: &session.TeamInfo{
+				Name:   "empty-team",
+				Agents: []session.AgentInfo{},
+			},
+		}
+
+		result := m.renderSession(s, false, 80)
+		if strings.Contains(result, "agents]") {
+			t.Error("session with empty team should not show agent badge")
+		}
+	})
+}
+
+func TestRenderTeamAgents(t *testing.T) {
+	t.Run("renders agents with status icons", func(t *testing.T) {
+		agents := []session.AgentInfo{
+			{Name: "researcher", Status: "working"},
+			{Name: "implementer", Status: "idle"},
+		}
+		result := renderTeamAgents(agents, 80, len(rowIndent))
+		if !strings.Contains(result, "researcher") {
+			t.Error("should contain researcher name")
+		}
+		if !strings.Contains(result, "implementer") {
+			t.Error("should contain implementer name")
+		}
+	})
+
+	t.Run("wraps to next line when agents overflow width", func(t *testing.T) {
+		agents := []session.AgentInfo{
+			{Name: "agent-one", Status: "working"},
+			{Name: "agent-two", Status: "idle"},
+			{Name: "agent-three", Status: "done"},
+			{Name: "agent-four", Status: "permission"},
+			{Name: "agent-five", Status: "working"},
+		}
+		// Use narrow width to force wrapping
+		result := renderTeamAgents(agents, 40, len(rowIndent))
+		lines := strings.Split(result, "\n")
+		if len(lines) < 2 {
+			t.Errorf("expected multiple lines for narrow width, got %d lines", len(lines))
+		}
+	})
+
+	t.Run("single agent fits on one line", func(t *testing.T) {
+		agents := []session.AgentInfo{
+			{Name: "solo", Status: "working"},
+		}
+		result := renderTeamAgents(agents, 80, len(rowIndent))
+		lines := strings.Split(result, "\n")
+		if len(lines) != 1 {
+			t.Errorf("single agent should fit on one line, got %d lines", len(lines))
+		}
+	})
+}
