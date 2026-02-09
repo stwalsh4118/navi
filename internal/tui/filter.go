@@ -132,82 +132,26 @@ func filterOffline(sessions []session.Info) []session.Info {
 	return filtered
 }
 
-// fuzzyMatch checks if query is a subsequence of target (case-insensitive).
-// Returns whether it matches and a relevance score.
-// Higher scores indicate better matches.
-func fuzzyMatch(query, target string) (bool, int) {
+// exactMatch checks if query is a case-insensitive substring of target.
+func exactMatch(query, target string) bool {
 	if query == "" {
-		return true, 0
+		return false
 	}
-
-	lowerQuery := strings.ToLower(query)
-	lowerTarget := strings.ToLower(target)
-
-	queryIdx := 0
-	score := 0
-	lastMatchIdx := -1
-
-	for i := 0; i < len(lowerTarget) && queryIdx < len(lowerQuery); i++ {
-		if lowerTarget[i] == lowerQuery[queryIdx] {
-			// Consecutive match bonus
-			if lastMatchIdx == i-1 {
-				score += 2
-			}
-			// Start-of-word bonus
-			if i == 0 || lowerTarget[i-1] == '/' || lowerTarget[i-1] == '-' || lowerTarget[i-1] == '_' || lowerTarget[i-1] == ' ' {
-				score += 3
-			}
-			score++ // Base match point
-			lastMatchIdx = i
-			queryIdx++
-		}
-	}
-
-	if queryIdx == len(lowerQuery) {
-		return true, score
-	}
-	return false, 0
+	return strings.Contains(strings.ToLower(target), strings.ToLower(query))
 }
 
-// fuzzyFilter returns sessions whose name, CWD, or message match the query.
-// Results are sorted by best match score (descending).
-func fuzzyFilter(sessions []session.Info, query string) []session.Info {
+// findMatches returns the indices of sessions whose name, CWD, or message
+// contain the query as a case-insensitive substring.
+func findMatches(sessions []session.Info, query string) []int {
 	if query == "" {
-		return sessions
+		return nil
 	}
-
-	type scored struct {
-		session session.Info
-		score   int
-	}
-
-	var matches []scored
-	for _, s := range sessions {
-		bestScore := 0
-
-		if ok, sc := fuzzyMatch(query, s.TmuxSession); ok && sc > bestScore {
-			bestScore = sc
-		}
-		if ok, sc := fuzzyMatch(query, s.CWD); ok && sc > bestScore {
-			bestScore = sc
-		}
-		if ok, sc := fuzzyMatch(query, s.Message); ok && sc > bestScore {
-			bestScore = sc
-		}
-
-		if bestScore > 0 {
-			matches = append(matches, scored{session: s, score: bestScore})
+	var matches []int
+	for i, s := range sessions {
+		if exactMatch(query, s.TmuxSession) || exactMatch(query, s.CWD) || exactMatch(query, s.Message) {
+			matches = append(matches, i)
 		}
 	}
-
-	// Sort by score descending
-	sort.SliceStable(matches, func(i, j int) bool {
-		return matches[i].score > matches[j].score
-	})
-
-	result := make([]session.Info, len(matches))
-	for i, m := range matches {
-		result[i] = m.session
-	}
-	return result
+	return matches
 }
+

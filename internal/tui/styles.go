@@ -76,6 +76,26 @@ var searchBarStyle = lipgloss.NewStyle().
 	BorderForeground(lipgloss.Color("99")).
 	Padding(0, 1)
 
+// Search match styles
+var (
+	// searchMatchIndicatorStyle is used for the left-side gutter indicator on non-current matches.
+	searchMatchIndicatorStyle = lipgloss.NewStyle().
+					Foreground(lipgloss.Color("226")) // Yellow indicator bar
+
+	// searchCurrentMatchIndicatorStyle is used for the left-side gutter indicator on the current match.
+	searchCurrentMatchIndicatorStyle = lipgloss.NewStyle().
+						Foreground(lipgloss.Color("226")). // Bright yellow indicator bar
+						Bold(true)
+
+	searchMatchCountStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("99")).
+				Bold(true)
+
+	searchNoMatchStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("196")).
+				Bold(true)
+)
+
 // Filter indicator style
 var filterActiveStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color("99")).

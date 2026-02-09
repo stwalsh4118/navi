@@ -26,7 +26,7 @@ func newSearchFilterTestModel() Model {
 	}
 }
 
-// TestE2E_AC1_SearchModeOpens tests AC1: `/` opens search mode with fuzzy matching.
+// TestE2E_AC1_SearchModeOpens tests AC1: `/` opens search mode with exact matching.
 func TestE2E_AC1_SearchModeOpens(t *testing.T) {
 	t.Run("slash key enters search mode", func(t *testing.T) {
 		m := newSearchFilterTestModel()
@@ -52,9 +52,9 @@ func TestE2E_AC1_SearchModeOpens(t *testing.T) {
 	})
 }
 
-// TestE2E_AC2_SearchFiltersRealTime tests AC2: Search filters session list in real-time.
-func TestE2E_AC2_SearchFiltersRealTime(t *testing.T) {
-	t.Run("typing in search filters sessions", func(t *testing.T) {
+// TestE2E_AC2_SearchExactMatch tests AC2: Search uses exact substring matching, all items remain visible.
+func TestE2E_AC2_SearchExactMatch(t *testing.T) {
+	t.Run("typing in search sets query and computes matches", func(t *testing.T) {
 		m := newSearchFilterTestModel()
 
 		// Enter search mode
@@ -73,61 +73,70 @@ func TestE2E_AC2_SearchFiltersRealTime(t *testing.T) {
 			t.Errorf("searchQuery should be 'api', got %q", m.searchQuery)
 		}
 
+		// All sessions should remain visible (search does not filter)
 		filtered := m.getFilteredSessions()
-		// "api-server" matches name, "tests" matches CWD (/home/user/api)
-		if len(filtered) == 0 {
-			t.Error("search for 'api' should return at least one result")
+		if len(filtered) != 5 {
+			t.Errorf("all 5 sessions should remain visible during search, got %d", len(filtered))
 		}
 
-		// Verify api-server is in results
-		found := false
-		for _, s := range filtered {
-			if s.TmuxSession == "api-server" {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Error("api-server should be in search results for 'api'")
+		// But match indices should identify the matching sessions
+		if len(m.searchMatches) == 0 {
+			t.Error("searchMatches should contain at least one match for 'api'")
 		}
 	})
 
-	t.Run("search matches CWD", func(t *testing.T) {
+	t.Run("search matches CWD via findMatches", func(t *testing.T) {
 		m := newSearchFilterTestModel()
-		m.searchMode = true
 		m.searchQuery = "deploy"
+		m.computeSearchMatches()
 
-		filtered := m.getFilteredSessions()
-		if len(filtered) != 1 || filtered[0].TmuxSession != "deploy" {
-			t.Errorf("search for 'deploy' should match deploy session via name/CWD, got %d results", len(filtered))
+		// "deploy" matches session name "deploy" and CWD "/home/user/deploy"
+		if len(m.searchMatches) != 1 {
+			t.Errorf("expected 1 match for 'deploy', got %d", len(m.searchMatches))
 		}
 	})
 
-	t.Run("search matches message content", func(t *testing.T) {
+	t.Run("search matches message content via findMatches", func(t *testing.T) {
 		m := newSearchFilterTestModel()
-		m.searchMode = true
 		m.searchQuery = "failed"
+		m.computeSearchMatches()
 
+		if len(m.searchMatches) == 0 {
+			t.Error("search for 'failed' should match deploy session via message")
+		}
+		// Verify the match index points to the deploy session
 		filtered := m.getFilteredSessions()
 		found := false
-		for _, s := range filtered {
-			if s.TmuxSession == "deploy" {
+		for _, idx := range m.searchMatches {
+			if filtered[idx].TmuxSession == "deploy" {
 				found = true
 			}
 		}
 		if !found {
-			t.Error("search for 'failed' should match deploy session via message")
+			t.Error("match indices should include deploy session for query 'failed'")
 		}
 	})
 
 	t.Run("search is case insensitive", func(t *testing.T) {
 		m := newSearchFilterTestModel()
-		m.searchMode = true
 		m.searchQuery = "API"
+		m.computeSearchMatches()
 
-		filtered := m.getFilteredSessions()
-		if len(filtered) == 0 {
-			t.Error("case-insensitive search for 'API' should match 'api-server'")
+		if len(m.searchMatches) == 0 {
+			t.Error("case-insensitive search for 'API' should match sessions")
+		}
+	})
+
+	t.Run("exact match rejects subsequence", func(t *testing.T) {
+		// "msr" should NOT match "my-server" (exact match, not fuzzy)
+		if exactMatch("msr", "my-server") {
+			t.Error("exact match should not match subsequences like 'msr' in 'my-server'")
+		}
+	})
+
+	t.Run("empty query matches nothing", func(t *testing.T) {
+		if exactMatch("", "anything") {
+			t.Error("empty query should match nothing")
 		}
 	})
 }
@@ -448,9 +457,34 @@ func TestE2E_AC8_EscClears(t *testing.T) {
 		if updated.searchQuery != "" {
 			t.Errorf("search query should be empty after Esc, got %q", updated.searchQuery)
 		}
+		if updated.searchMatches != nil {
+			t.Error("searchMatches should be nil after Esc")
+		}
 	})
 
-	t.Run("esc clears status filter when not in search mode", func(t *testing.T) {
+	t.Run("esc clears persisted search state", func(t *testing.T) {
+		m := newSearchFilterTestModel()
+		// Simulate persisted search (searchMode=false but searchQuery set)
+		m.searchQuery = "api"
+		m.searchMatches = []int{0, 3}
+		m.currentMatchIdx = 1
+
+		msg := tea.KeyMsg{Type: tea.KeyEsc}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if updated.searchQuery != "" {
+			t.Errorf("search query should be empty after Esc, got %q", updated.searchQuery)
+		}
+		if updated.searchMatches != nil {
+			t.Error("searchMatches should be nil after Esc")
+		}
+		if updated.currentMatchIdx != 0 {
+			t.Error("currentMatchIdx should be 0 after Esc")
+		}
+	})
+
+	t.Run("esc clears status filter when no search active", func(t *testing.T) {
 		m := newSearchFilterTestModel()
 		m.statusFilter = session.StatusWaiting
 
@@ -553,18 +587,24 @@ func TestE2E_AC9_CursorPreservation(t *testing.T) {
 
 // TestE2E_FilterComposition tests that multiple filters compose correctly.
 func TestE2E_FilterComposition(t *testing.T) {
-	t.Run("status filter and search compose", func(t *testing.T) {
+	t.Run("status filter reduces list independently of search", func(t *testing.T) {
 		m := newSearchFilterTestModel()
 		m.statusFilter = session.StatusWorking
 		m.searchQuery = "api"
 
 		filtered := m.getFilteredSessions()
-		// Only api-server is working AND matches "api"
+		// Status filter reduces to 1 working session; search does not filter further
 		if len(filtered) != 1 {
-			t.Errorf("expected 1 session matching working+api, got %d", len(filtered))
+			t.Errorf("expected 1 session with working status, got %d", len(filtered))
 		}
 		if len(filtered) > 0 && filtered[0].TmuxSession != "api-server" {
 			t.Errorf("expected api-server, got %q", filtered[0].TmuxSession)
+		}
+
+		// But search matches should be computed against the filtered list
+		m.computeSearchMatches()
+		if len(m.searchMatches) != 1 {
+			t.Errorf("expected 1 search match in working sessions for 'api', got %d", len(m.searchMatches))
 		}
 	})
 
@@ -589,7 +629,7 @@ func TestE2E_FilterComposition(t *testing.T) {
 		m.sortMode = SortName
 
 		filtered := m.getFilteredSessions()
-		// Only api-server matches: working status + "server" in name + not done
+		// Status filter reduces to 1 working session; search doesn't filter
 		if len(filtered) != 1 {
 			t.Errorf("expected 1 session with all filters, got %d", len(filtered))
 		}
@@ -614,69 +654,286 @@ func TestE2E_SearchModeKeyRouting(t *testing.T) {
 		}
 	})
 
-	t.Run("enter key works during search", func(t *testing.T) {
+	t.Run("enter key persists search and attaches", func(t *testing.T) {
 		m := newSearchFilterTestModel()
 		m.searchMode = true
+		m.searchQuery = "api"
+		m.searchInput.SetValue("api")
 		m.searchInput.Focus()
 		m.cursor = 0
 
 		msg := tea.KeyMsg{Type: tea.KeyEnter}
-		_, cmd := m.Update(msg)
+		newModel, cmd := m.Update(msg)
+		updated := newModel.(Model)
 
+		// Search mode should be exited but query persists
+		if updated.searchMode {
+			t.Error("searchMode should be false after Enter (input mode exits)")
+		}
+		if updated.searchQuery != "api" {
+			t.Errorf("searchQuery should persist after Enter, got %q", updated.searchQuery)
+		}
 		if cmd == nil {
-			t.Error("enter should return a command during search mode")
+			t.Error("enter should return a command (attach) during search mode")
 		}
 	})
 }
 
-// TestFuzzyMatch tests the fuzzy matching algorithm directly.
-func TestFuzzyMatch(t *testing.T) {
+// TestExactMatch tests the exact matching function directly.
+func TestExactMatch(t *testing.T) {
 	t.Run("exact substring matches", func(t *testing.T) {
-		ok, score := fuzzyMatch("api", "my-api-server")
-		if !ok || score == 0 {
+		if !exactMatch("api", "my-api-server") {
 			t.Error("'api' should match 'my-api-server'")
 		}
 	})
 
-	t.Run("subsequence matches", func(t *testing.T) {
-		ok, _ := fuzzyMatch("msr", "my-server")
-		// m...s...r subsequence match
-		if !ok {
-			t.Error("'msr' should match 'my-server' as subsequence")
+	t.Run("subsequence does NOT match", func(t *testing.T) {
+		if exactMatch("msr", "my-server") {
+			t.Error("'msr' should NOT match 'my-server' (not a substring)")
 		}
 	})
 
 	t.Run("case insensitive", func(t *testing.T) {
-		ok, _ := fuzzyMatch("API", "my-api-server")
-		if !ok {
+		if !exactMatch("API", "my-api-server") {
 			t.Error("'API' should match 'my-api-server' case-insensitively")
 		}
 	})
 
 	t.Run("no match returns false", func(t *testing.T) {
-		ok, _ := fuzzyMatch("xyz", "my-api-server")
-		if ok {
+		if exactMatch("xyz", "my-api-server") {
 			t.Error("'xyz' should not match 'my-api-server'")
 		}
 	})
 
-	t.Run("empty query matches everything", func(t *testing.T) {
-		ok, _ := fuzzyMatch("", "anything")
-		if !ok {
-			t.Error("empty query should match everything")
+	t.Run("empty query matches nothing", func(t *testing.T) {
+		if exactMatch("", "anything") {
+			t.Error("empty query should match nothing")
 		}
 	})
 
-	t.Run("start-of-word bonus gives higher score", func(t *testing.T) {
-		_, score1 := fuzzyMatch("a", "api-server")   // Start of word
-		_, score2 := fuzzyMatch("p", "api-server")   // Middle of word
-		_, score3 := fuzzyMatch("s", "api-server")   // Start of second word (after -)
-
-		if score1 <= score2 {
-			t.Error("start-of-string match should score higher than mid-word match")
+	t.Run("partial word matches", func(t *testing.T) {
+		if !exactMatch("serv", "api-server") {
+			t.Error("'serv' should match 'api-server' as substring")
 		}
-		if score3 <= score2 {
-			t.Error("start-of-word match should score higher than mid-word match")
+	})
+}
+
+// TestFindMatches tests the findMatches function directly.
+func TestFindMatches(t *testing.T) {
+	sessions := []session.Info{
+		{TmuxSession: "api-server", CWD: "/home/user/api", Message: "Building API"},
+		{TmuxSession: "frontend", CWD: "/home/user/web", Message: "Waiting"},
+		{TmuxSession: "database", CWD: "/home/user/db", Message: "Need approval"},
+		{TmuxSession: "tests", CWD: "/home/user/api", Message: "All tests passed"},
+	}
+
+	t.Run("matches by name", func(t *testing.T) {
+		matches := findMatches(sessions, "api")
+		// "api-server" name, and "tests" CWD contains "api"
+		if len(matches) < 1 {
+			t.Error("should find at least 1 match for 'api'")
+		}
+	})
+
+	t.Run("matches by CWD", func(t *testing.T) {
+		matches := findMatches(sessions, "/home/user/db")
+		if len(matches) != 1 || matches[0] != 2 {
+			t.Errorf("should find database at index 2, got %v", matches)
+		}
+	})
+
+	t.Run("matches by message", func(t *testing.T) {
+		matches := findMatches(sessions, "passed")
+		if len(matches) != 1 || matches[0] != 3 {
+			t.Errorf("should find tests at index 3, got %v", matches)
+		}
+	})
+
+	t.Run("empty query returns nil", func(t *testing.T) {
+		matches := findMatches(sessions, "")
+		if matches != nil {
+			t.Errorf("empty query should return nil, got %v", matches)
+		}
+	})
+
+	t.Run("no matches returns nil", func(t *testing.T) {
+		matches := findMatches(sessions, "nonexistent")
+		if matches != nil {
+			t.Errorf("non-matching query should return nil, got %v", matches)
+		}
+	})
+}
+
+// TestMatchCycling tests n/N match cycling with wrap-around.
+func TestMatchCycling(t *testing.T) {
+	t.Run("n cycles through matches forward with wrap", func(t *testing.T) {
+		m := newSearchFilterTestModel()
+		m.searchQuery = "api"
+		m.computeSearchMatches()
+
+		if len(m.searchMatches) < 2 {
+			t.Skip("need at least 2 matches for cycling test")
+		}
+
+		// Record initial state
+		firstMatchIdx := m.searchMatches[0]
+		secondMatchIdx := m.searchMatches[1]
+
+		// First n should go to second match
+		m.nextMatch()
+		if m.cursor != secondMatchIdx {
+			t.Errorf("first n should move to match index %d, got %d", secondMatchIdx, m.cursor)
+		}
+
+		// Keep pressing n until we wrap back to first match
+		for i := 0; i < len(m.searchMatches); i++ {
+			m.nextMatch()
+		}
+		if m.cursor != secondMatchIdx {
+			t.Errorf("after wrapping, cursor should be at %d, got %d", secondMatchIdx, m.cursor)
+		}
+
+		// Verify we can get back to first
+		for m.cursor != firstMatchIdx {
+			m.nextMatch()
+		}
+		if m.cursor != firstMatchIdx {
+			t.Errorf("should be able to cycle back to first match %d", firstMatchIdx)
+		}
+	})
+
+	t.Run("N cycles through matches backward with wrap", func(t *testing.T) {
+		m := newSearchFilterTestModel()
+		m.searchQuery = "api"
+		m.computeSearchMatches()
+
+		if len(m.searchMatches) < 2 {
+			t.Skip("need at least 2 matches for cycling test")
+		}
+
+		lastMatchIdx := m.searchMatches[len(m.searchMatches)-1]
+
+		// First N should wrap to last match
+		m.prevMatch()
+		if m.cursor != lastMatchIdx {
+			t.Errorf("first N should wrap to last match index %d, got %d", lastMatchIdx, m.cursor)
+		}
+	})
+
+	t.Run("n does nothing with no matches", func(t *testing.T) {
+		m := newSearchFilterTestModel()
+		m.searchQuery = "nonexistent"
+		m.computeSearchMatches()
+		m.cursor = 2
+
+		m.nextMatch()
+		if m.cursor != 2 {
+			t.Errorf("n should not move cursor when no matches, cursor was %d", m.cursor)
+		}
+	})
+
+	t.Run("n opens new session when no search active", func(t *testing.T) {
+		m := newSearchFilterTestModel()
+		// No search query - n should open new session dialog
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if updated.dialogMode != DialogNewSession {
+			t.Error("n without search should open new session dialog")
+		}
+	})
+
+	t.Run("n jumps to next match when search persisted", func(t *testing.T) {
+		m := newSearchFilterTestModel()
+		m.searchQuery = "api"
+		m.computeSearchMatches()
+
+		if len(m.searchMatches) == 0 {
+			t.Fatal("need matches for this test")
+		}
+
+		// Simulate persisted search (not in searchMode, but query set)
+		m.searchMode = false
+		firstMatch := m.searchMatches[0]
+		m.cursor = firstMatch
+
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		// Should NOT open new session dialog
+		if updated.dialogMode == DialogNewSession {
+			t.Error("n with persisted search should cycle matches, not open new session")
+		}
+	})
+}
+
+// TestSearchPersistence tests that search persists after Enter and clears only on Esc.
+func TestSearchPersistence(t *testing.T) {
+	t.Run("enter exits input mode but preserves search", func(t *testing.T) {
+		m := newSearchFilterTestModel()
+		m.searchMode = true
+		m.searchQuery = "api"
+		m.searchInput.SetValue("api")
+		m.searchInput.Focus()
+		m.computeSearchMatches()
+
+		msg := tea.KeyMsg{Type: tea.KeyEnter}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if updated.searchMode {
+			t.Error("searchMode should be false after Enter")
+		}
+		if updated.searchQuery != "api" {
+			t.Error("searchQuery should persist after Enter")
+		}
+		if updated.searchMatches == nil {
+			t.Error("searchMatches should persist after Enter")
+		}
+	})
+
+	t.Run("search bar visible when search persisted", func(t *testing.T) {
+		m := newSearchFilterTestModel()
+		m.searchQuery = "api"
+		m.computeSearchMatches()
+		// Not in searchMode but query is set
+
+		result := m.View()
+		if !strings.Contains(result, "api") {
+			t.Error("view should show persisted search query")
+		}
+	})
+
+	t.Run("match counter visible in persisted search", func(t *testing.T) {
+		m := newSearchFilterTestModel()
+		m.searchQuery = "api"
+		m.computeSearchMatches()
+
+		result := m.View()
+		if len(m.searchMatches) > 0 {
+			// Should contain a match counter like [1/2]
+			if !strings.Contains(result, "/") {
+				t.Error("view should show match counter in persisted search")
+			}
+		}
+	})
+}
+
+// TestMatchCounter tests the match counter display.
+func TestMatchCounter(t *testing.T) {
+	t.Run("no matches shows indicator", func(t *testing.T) {
+		m := newSearchFilterTestModel()
+		m.searchMode = true
+		m.searchQuery = "nonexistent"
+		m.searchInput.SetValue("nonexistent")
+		m.searchInput.Focus()
+		m.computeSearchMatches()
+
+		result := m.View()
+		if !strings.Contains(result, "No matches") {
+			t.Error("should show 'No matches' when query has no results")
 		}
 	})
 }
