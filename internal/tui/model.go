@@ -490,6 +490,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "s":
 			// Cycle sort mode: Priority -> Name -> Age -> Status -> Directory -> Priority
 			m.sortMode = (m.sortMode + 1) % SortMode(sortModeCount)
+			if m.searchQuery != "" {
+				m.computeSearchMatches()
+			}
 			return m, nil
 
 		case "o":
@@ -497,6 +500,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			selectedSession := m.selectedSessionName()
 			m.hideOffline = !m.hideOffline
 			m.preserveCursor(selectedSession)
+			if m.searchQuery != "" {
+				m.computeSearchMatches()
+			}
 			return m, nil
 
 		case "0":
@@ -504,6 +510,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			selectedSession := m.selectedSessionName()
 			m.statusFilter = ""
 			m.preserveCursor(selectedSession)
+			if m.searchQuery != "" {
+				m.computeSearchMatches()
+			}
 			return m, nil
 
 		case "1", "2", "3", "4", "5":
@@ -516,6 +525,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.statusFilter = targetStatus
 			}
 			m.preserveCursor(selectedSession)
+			if m.searchQuery != "" {
+				m.computeSearchMatches()
+			}
 			return m, nil
 
 		case "f":
@@ -531,6 +543,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.filterMode = session.FilterAll
 				}
 				m.preserveCursor(selectedSession)
+				if m.searchQuery != "" {
+					m.computeSearchMatches()
+				}
 			}
 			return m, nil
 

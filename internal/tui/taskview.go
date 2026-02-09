@@ -73,7 +73,7 @@ func (m Model) renderTaskPanel(width, height int) string {
 	} else {
 		// Render task list with collapsible groups
 		maxLines := height - 3 // header(1) + borders(2)
-		if m.taskSearchMode {
+		if m.taskSearchMode || m.taskSearchQuery != "" {
 			maxLines-- // search bar takes 1 line
 		}
 		if maxLines < 1 {
