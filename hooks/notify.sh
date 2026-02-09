@@ -35,40 +35,31 @@ SESSION_FILE="$DIR/$SESSION.json"
 # ---- STALE EVENT GUARD ----
 # Teammate processes fire hooks (PostToolUse, Stop, SessionEnd) with their own session_id
 # but no teammate_name. These would corrupt the main session's status if allowed through.
-# Detect them by comparing the stdin session_id to the session file's stored session_id.
+# Detect them by comparing the stdin session_id to the session_id stored in the session JSON.
 # Also handle SessionEnd from teammates by setting their agent to "stopped".
 if [ -n "$STDIN_JSON" ] && command -v jq &> /dev/null; then
     HOOK_EVENT=$(echo "$STDIN_JSON" | jq -r '.hook_event_name // ""' 2>/dev/null)
     HOOK_SESSION_ID=$(echo "$STDIN_JSON" | jq -r '.session_id // ""' 2>/dev/null)
 
-    # Use a sidecar file to track the main agent's session_id.
-    # This avoids chicken-and-egg: teammate session_ids are only learned from TeammateIdle
-    # which fires after their PostToolUse/Stop events we need to block.
-    MAIN_SID_FILE="$SESSION_FILE.main-sid"
-
-    # UserPromptSubmit is ALWAYS from the main agent — update the stored main session_id
-    # Also clean up stopped agents from team data so they don't linger forever.
-    if [ "$HOOK_EVENT" = "UserPromptSubmit" ] && [ -n "$HOOK_SESSION_ID" ]; then
-        echo "$HOOK_SESSION_ID" > "$MAIN_SID_FILE"
-        # Remove stopped agents from team data on new prompt
-        if [ -f "$SESSION_FILE" ]; then
-            CLEANED=$(jq '
-                if .team and .team.agents then
-                    .team.agents = [.team.agents[] | select(.status != "stopped")]
-                else . end |
-                if .team and (.team.agents | length) == 0 then del(.team) else . end
-            ' "$SESSION_FILE" 2>/dev/null)
-            if [ -n "$CLEANED" ]; then
-                TMPFILE=$(mktemp "$DIR/.tmp.XXXXXX")
-                echo "$CLEANED" > "$TMPFILE"
-                mv "$TMPFILE" "$SESSION_FILE"
-            fi
+    # UserPromptSubmit is ALWAYS from the main agent.
+    # Clean up stopped agents from team data so they don't linger forever.
+    if [ "$HOOK_EVENT" = "UserPromptSubmit" ] && [ -f "$SESSION_FILE" ]; then
+        CLEANED=$(jq '
+            if .team and .team.agents then
+                .team.agents = [.team.agents[] | select(.status != "stopped")]
+            else . end |
+            if .team and (.team.agents | length) == 0 then del(.team) else . end
+        ' "$SESSION_FILE" 2>/dev/null)
+        if [ -n "$CLEANED" ]; then
+            TMPFILE=$(mktemp "$DIR/.tmp.XXXXXX")
+            echo "$CLEANED" > "$TMPFILE"
+            mv "$TMPFILE" "$SESSION_FILE"
         fi
     fi
 
-    # For non-teammate events, check if session_id matches the stored main session_id
-    if [ -z "$TEAMMATE_NAME" ] && [ -n "$HOOK_SESSION_ID" ] && [ -f "$MAIN_SID_FILE" ]; then
-        STORED_MAIN_SID=$(cat "$MAIN_SID_FILE" 2>/dev/null)
+    # For non-teammate events, check if session_id matches the main session_id in the JSON
+    if [ -z "$TEAMMATE_NAME" ] && [ -n "$HOOK_SESSION_ID" ] && [ -f "$SESSION_FILE" ]; then
+        STORED_MAIN_SID=$(jq -r '.session_id // ""' "$SESSION_FILE" 2>/dev/null)
 
         if [ -n "$STORED_MAIN_SID" ] && [ "$HOOK_SESSION_ID" != "$STORED_MAIN_SID" ]; then
             # This is a teammate event — don't let it corrupt the main session
@@ -267,15 +258,11 @@ if [ -n "$EXISTING_TEAM" ] && [ "$EXISTING_TEAM" != "null" ]; then
   \"team\": $EXISTING_TEAM"
 fi
 
-# Extract session_id from stdin for storage and update the sidecar file
+# Extract session_id from stdin for storage in the session JSON
 MAIN_SESSION_ID=""
 if [ -n "$STDIN_JSON" ] && command -v jq &> /dev/null; then
     MAIN_SESSION_ID=$(echo "$STDIN_JSON" | jq -r '.session_id // ""' 2>/dev/null)
     [ "$MAIN_SESSION_ID" = "null" ] && MAIN_SESSION_ID=""
-fi
-# If we reach the main branch, this IS the main agent — update the sidecar
-if [ -n "$MAIN_SESSION_ID" ]; then
-    echo "$MAIN_SESSION_ID" > "$SESSION_FILE.main-sid"
 fi
 
 TMPFILE=$(mktemp "$DIR/.tmp.XXXXXX")
