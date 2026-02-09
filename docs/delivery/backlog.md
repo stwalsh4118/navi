@@ -38,6 +38,7 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 30 | User | As a user, I want task providers to supply file paths so that the content viewer can open task detail files from any provider without hardcoded path assumptions | Proposed | [View Details](./30/prd.md) |
 | 31 | User | As a user, I want vim-style exact-match search with next/previous cycling so that I can quickly locate specific sessions and tasks without fuzzy matching | Done | [View Details](./31/prd.md) |
 | 32 | User | As a user, I want all TUI panels to scroll their content so that I can see all items even when the panel is too short to display everything | Done | [View Details](./32/prd.md) |
+| 33 | User | As a user, I want the TUI to correctly handle agent team sessions and show inline team status so that I can monitor multi-agent workflows and the dashboard remains accurate | Agreed | [View Details](./33/prd.md) |
 
 ## History Log
 
@@ -108,3 +109,5 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 2026-02-09 17:00:00 | 32 | Created | Scrollable Panels - add scrolling to task panel, preview pane, session list, and dialogs | User |
 | 2026-02-09 17:05:00 | 32 | Status Change | Proposed → Agreed - Approved for task breakdown | User |
 | 2026-02-09 18:49:31 | 32 | Status Change | Agreed → Done - All 5 tasks Done, all tests pass with -race, go vet clean | AI_Agent |
+| 2026-02-09 19:00:00 | 33 | Created | Agent Team Awareness and Hook Robustness - fix stale permission status, prevent teammate hooks from corrupting main session, show inline agent team info | User |
+| 2026-02-09 19:15:00 | 33 | Status Change | Proposed → Agreed - Open questions resolved, approved for task breakdown | User |
