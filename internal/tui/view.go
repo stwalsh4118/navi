@@ -350,9 +350,30 @@ func renderGitInfo(g *git.Info, maxWidth int) string {
 		parts = append(parts, redStyle.Render(fmt.Sprintf("%s%d", git.BehindPrefix, g.Behind)))
 	}
 
-	// PR number if detected via gh CLI
+	// PR indicator with enhanced metadata when PRDetail is available
 	if g.PRNum > 0 {
-		parts = append(parts, dimStyle.Render(fmt.Sprintf("[%s%d]", git.PRPrefix, g.PRNum)))
+		var prParts []string
+		prParts = append(prParts, fmt.Sprintf("%s%d", git.PRPrefix, g.PRNum))
+
+		if g.PRDetail != nil {
+			if g.PRDetail.Draft {
+				// Draft PRs: show "draft" instead of check indicator
+				prParts = append(prParts, git.IndicatorDraft)
+			} else {
+				// Check status indicator (only for non-draft PRs)
+				checkIndicator := g.PRDetail.CheckSummary.CheckIndicator()
+				if checkIndicator != "" {
+					prParts = append(prParts, checkIndicator)
+				}
+			}
+
+			// Comment count (when > 0)
+			if g.PRDetail.Comments > 0 {
+				prParts = append(prParts, fmt.Sprintf("%s%d", git.CommentIcon, g.PRDetail.Comments))
+			}
+		}
+
+		parts = append(parts, dimStyle.Render("["+strings.Join(prParts, " ")+"]"))
 	}
 
 	result := strings.Join(parts, " ")
@@ -856,15 +877,87 @@ func (m Model) renderGitDetailView() string {
 			url := ghInfo.PRURL(g.PRNum)
 			b.WriteString(fmt.Sprintf("Link: %s\n", dimStyle.Render(url)))
 		}
+
+		// Extended PR metadata when available
+		if g.PRDetail != nil {
+			pr := g.PRDetail
+
+			// PR Title
+			b.WriteString(fmt.Sprintf("Title: %s\n", pr.Title))
+
+			// PR State with styling
+			stateStr := pr.State
+			switch pr.State {
+			case git.PRStateOpen:
+				stateStr = greenStyle.Render(pr.State)
+			case git.PRStateClosed:
+				stateStr = redStyle.Render(pr.State)
+			case git.PRStateMerged:
+				stateStr = cyanStyle.Render(pr.State)
+			}
+			b.WriteString(fmt.Sprintf("State: %s", stateStr))
+			if pr.Draft {
+				b.WriteString(" " + dimStyle.Render("(draft)"))
+			}
+			b.WriteString("\n")
+
+			// Mergeable status
+			b.WriteString(fmt.Sprintf("Merge: %s\n", pr.MergeIndicator()))
+
+			// Review status
+			b.WriteString(fmt.Sprintf("Review: %s\n", pr.ReviewIndicator()))
+
+			// Labels (if any)
+			if len(pr.Labels) > 0 {
+				b.WriteString(fmt.Sprintf("Labels: %s\n", dimStyle.Render(strings.Join(pr.Labels, " "))))
+			}
+
+			// Changed files stats
+			b.WriteString(fmt.Sprintf("Changes: %d files (+%d / -%d)\n",
+				pr.ChangedFiles, pr.Additions, pr.Deletions))
+
+			// CI/CD Checks section
+			if len(pr.Checks) > 0 {
+				b.WriteString("\n")
+				// Checks header with aggregate summary
+				b.WriteString(boldStyle.Render(fmt.Sprintf("Checks (%d/%d passed)",
+					pr.CheckSummary.Passed, pr.CheckSummary.Total)))
+				b.WriteString("\n")
+
+				// Individual checks
+				for _, check := range pr.Checks {
+					var icon string
+					switch {
+					case check.Status == git.CheckStatusCompleted && check.Conclusion == git.CheckConclusionSuccess:
+						icon = greenStyle.Render(git.IndicatorPass)
+					case check.Status == git.CheckStatusCompleted && (check.Conclusion == git.CheckConclusionFailure ||
+						check.Conclusion == git.CheckConclusionCancelled || check.Conclusion == git.CheckConclusionTimedOut):
+						icon = redStyle.Render(git.IndicatorFail)
+					default:
+						icon = yellowStyle.Render(git.IndicatorPending)
+					}
+					b.WriteString(fmt.Sprintf("  %s %s\n", icon, check.Name))
+				}
+			}
+		}
 	}
 
 	b.WriteString("\n")
+
+	// Auto-refresh indicator
+	if m.prAutoRefreshActive {
+		b.WriteString(dimStyle.Render("Auto-refreshing..."))
+		b.WriteString("\n")
+	}
 
 	// Keybindings
 	var keys []string
 	keys = append(keys, "d: diff")
 	if g.PRNum > 0 && g.Remote != "" {
 		keys = append(keys, "o: open PR")
+	}
+	if g.PRNum > 0 {
+		keys = append(keys, "r: refresh", "c: comments")
 	}
 	keys = append(keys, "Esc: close")
 	b.WriteString(dimStyle.Render(strings.Join(keys, "  ")))

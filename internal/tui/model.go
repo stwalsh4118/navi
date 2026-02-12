@@ -98,6 +98,9 @@ type Model struct {
 	taskAccordionMode    bool                        // Accordion mode: expanding one group collapses others
 	taskRefreshing       bool                        // Whether a manual refresh is in progress
 
+	// PR auto-refresh state
+	prAutoRefreshActive bool // Whether auto-refresh ticker is active for pending checks
+
 	// Content viewer state
 	contentViewerTitle      string      // Title displayed in the content viewer header
 	contentViewerLines      []string    // Content split into lines for scrolling
@@ -142,6 +145,12 @@ type previewDebounceMsg struct{}
 // gitTickMsg is sent to trigger periodic git info refresh.
 type gitTickMsg time.Time
 
+// prAutoRefreshTickMsg is sent to trigger periodic PR detail refresh when checks are pending.
+type prAutoRefreshTickMsg time.Time
+
+// prAutoRefreshInterval is the interval between auto-refreshes of PR data when checks are pending.
+const prAutoRefreshInterval = 30 * time.Second
+
 // gitInfoMsg is returned after polling git info for all sessions.
 type gitInfoMsg struct {
 	cache map[string]*git.Info // Map of CWD to git.Info
@@ -149,8 +158,15 @@ type gitInfoMsg struct {
 
 // gitPRMsg is returned after fetching PR info for a specific directory.
 type gitPRMsg struct {
-	cwd   string
-	prNum int
+	cwd      string
+	prNum    int
+	prDetail *git.PRDetail
+}
+
+// gitPRCommentsMsg carries fetched PR comments.
+type gitPRCommentsMsg struct {
+	comments []git.PRComment
+	err      error
 }
 
 // remoteSessionsMsg is the Bubble Tea message for remote session polling results.
@@ -872,6 +888,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case prAutoRefreshTickMsg:
+		// Only refresh if git detail is open and auto-refresh is active
+		if !m.prAutoRefreshActive || m.dialogMode != DialogGitDetail {
+			m.prAutoRefreshActive = false
+			return m, nil
+		}
+		// Fetch updated PR data
+		if m.sessionToModify != nil && m.sessionToModify.Git != nil {
+			var fetchCmd tea.Cmd
+			if m.sessionToModify.Remote != "" {
+				fetchCmd = fetchRemotePRCmd(m.sessionToModify.CWD, m.sessionToModify.Git.Branch, m.sessionToModify.Git.Remote)
+			} else if m.sessionToModify.CWD != "" {
+				fetchCmd = fetchPRCmd(m.sessionToModify.CWD)
+			}
+			if fetchCmd != nil {
+				return m, tea.Batch(fetchCmd, prAutoRefreshTickCmd())
+			}
+		}
+		return m, prAutoRefreshTickCmd()
+
 	case gitTickMsg:
 		// Periodic git info refresh
 		if len(m.sessions) == 0 {
@@ -899,16 +935,50 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case gitPRMsg:
-		// Update PR number for the session being viewed (lazy-loaded)
+		// Update PR number and detail for the session being viewed (lazy-loaded)
 		if m.sessionToModify != nil && m.sessionToModify.CWD == msg.cwd && m.sessionToModify.Git != nil {
 			m.sessionToModify.Git.PRNum = msg.prNum
+			m.sessionToModify.Git.PRDetail = msg.prDetail
 		}
 		// Also update the cache so it persists
 		if m.gitCache != nil {
 			if info, ok := m.gitCache[msg.cwd]; ok {
 				info.PRNum = msg.prNum
+				info.PRDetail = msg.prDetail
 			}
 		}
+		// Start or stop auto-refresh based on check status
+		if m.dialogMode == DialogGitDetail && msg.prDetail != nil {
+			if msg.prDetail.CheckSummary.IsPending() && !m.prAutoRefreshActive {
+				m.prAutoRefreshActive = true
+				return m, prAutoRefreshTickCmd()
+			} else if !msg.prDetail.CheckSummary.IsPending() {
+				m.prAutoRefreshActive = false
+			}
+		}
+		return m, nil
+
+	case gitPRCommentsMsg:
+		if msg.err != nil {
+			m.dialogError = "Failed to fetch comments: " + msg.err.Error()
+			return m, nil
+		}
+		// Open comments in content viewer
+		if len(msg.comments) == 0 {
+			m.dialogError = "No comments on this PR"
+			return m, nil
+		}
+		var commentContent strings.Builder
+		for _, c := range msg.comments {
+			commentContent.WriteString(fmt.Sprintf("--- %s (%s) ---\n", c.Author, c.CreatedAt))
+			if c.Type == git.CommentTypeReview && c.FilePath != "" {
+				commentContent.WriteString(fmt.Sprintf("[%s:%d]\n", c.FilePath, c.Line))
+			}
+			commentContent.WriteString(c.Body)
+			commentContent.WriteString("\n\n")
+		}
+		title := fmt.Sprintf("PR Comments (%d)", len(msg.comments))
+		m.openContentViewerFrom(title, commentContent.String(), ContentModePlain, DialogGitDetail)
 		return m, nil
 
 	case remoteDismissResultMsg:
@@ -1828,6 +1898,7 @@ func (m Model) updateDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.dialogMode = DialogNone
 		m.dialogError = ""
 		m.sessionToModify = nil
+		m.prAutoRefreshActive = false // Stop auto-refresh when closing dialog
 		return m, nil
 
 	case "tab":
@@ -1903,6 +1974,33 @@ func (m Model) updateDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			title := fmt.Sprintf("Git Diff: %s", m.sessionToModify.Git.Branch)
 			m.openContentViewerFrom(title, diff, ContentModeDiff, DialogGitDetail)
 			return m, nil
+		}
+
+	case "r":
+		// Refresh PR data from git detail view
+		if m.dialogMode == DialogGitDetail && m.sessionToModify != nil && m.sessionToModify.Git != nil {
+			// Reset auto-refresh timer (next auto-tick will be after full interval)
+			m.prAutoRefreshActive = false
+			if m.sessionToModify.Remote != "" {
+				return m, fetchRemotePRCmd(m.sessionToModify.CWD, m.sessionToModify.Git.Branch, m.sessionToModify.Git.Remote)
+			}
+			if m.sessionToModify.CWD != "" {
+				return m, fetchPRCmd(m.sessionToModify.CWD)
+			}
+		}
+
+	case "c":
+		// Fetch and show PR comments
+		if m.dialogMode == DialogGitDetail && m.sessionToModify != nil && m.sessionToModify.Git != nil && m.sessionToModify.Git.PRNum > 0 {
+			m.dialogError = "Loading comments..."
+			if m.sessionToModify.Remote != "" {
+				ghInfo := git.ParseGitHubRemote(m.sessionToModify.Git.Remote)
+				if ghInfo != nil {
+					return m, fetchRemotePRCommentsCmd(ghInfo.Owner, ghInfo.Repo, m.sessionToModify.Git.PRNum)
+				}
+			} else {
+				return m, fetchPRCommentsCmd(m.sessionToModify.CWD, m.sessionToModify.Git.PRNum)
+			}
 		}
 	}
 
