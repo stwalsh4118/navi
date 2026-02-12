@@ -39,6 +39,10 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 31 | User | As a user, I want vim-style exact-match search with next/previous cycling so that I can quickly locate specific sessions and tasks without fuzzy matching | Done | [View Details](./31/prd.md) |
 | 32 | User | As a user, I want all TUI panels to scroll their content so that I can see all items even when the panel is too short to display everything | Done | [View Details](./32/prd.md) |
 | 33 | User | As a user, I want the TUI to correctly handle agent team sessions and show inline team status so that I can monitor multi-agent workflows and the dashboard remains accurate | Done | [View Details](./33/prd.md) |
+| 34 | User | As a user, I want enhanced session creation with shell-only mode, directory tab-completion, clone session, and attach-after-create so that session setup is faster and more flexible | Proposed | [View Details](./34/prd.md) |
+| 35 | User | As a user, I want built-in provider scripts embedded in the binary, custom providers loaded from ~/.config/navi/providers/, and all config consolidated under ~/.config/navi/ so that navi works reliably from anywhere with a single config directory | Agreed | [View Details](./35/prd.md) |
+| 36 | User | As a user, I want navi to build and run on Windows with platform-appropriate paths and graceful degradation for Unix-only features so that I can use navi across operating systems | Proposed | [View Details](./36/prd.md) |
+| 37 | User | As a user, I want sorting, filtering, progress indicators, summary stats, and improved navigation in the task view so that I can efficiently manage a large backlog | Done | [View Details](./37/prd.md) |
 
 ## History Log
 
@@ -112,3 +116,10 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 2026-02-09 19:00:00 | 33 | Created | Agent Team Awareness and Hook Robustness - fix stale permission status, prevent teammate hooks from corrupting main session, show inline agent team info | User |
 | 2026-02-09 19:15:00 | 33 | Status Change | Proposed → Agreed - Open questions resolved, approved for task breakdown | User |
 | 2026-02-09 21:45:49 | 33 | Status Change | Agreed → Done - All 5 tasks Done, all tests pass with -race, go vet clean, live E2E verified with 3-agent team | AI_Agent |
+| 2026-02-10 00:00:00 | 34 | Created | Enhanced Session Creation - shell-only mode, directory tab-completion, clone session, attach-after-create | User |
+| 2026-02-12 00:00:00 | 35 | Created | Embed Built-in Providers and Standardize Custom Provider Location | User |
+| 2026-02-12 00:00:00 | 35 | Status Change | Proposed → Agreed - Scope expanded to include global config migration to ~/.config/navi/, approved for task breakdown | User |
+| 2026-02-12 00:00:00 | 36 | Created | Windows Build Support and Cross-Platform Compatibility | User |
+| 2026-02-12 00:00:00 | 37 | Created | Task View Enhancements — Sorting, Filtering, Progress, and Navigation | User |
+| 2026-02-12 07:37:46 | 37 | Status Change | Proposed → Agreed - Approved for task breakdown | User |
+| 2026-02-12 08:49:09 | 37 | Status Change | InProgress → Done - All 7 tasks Done, all tests pass with -race, go vet clean | AI_Agent |

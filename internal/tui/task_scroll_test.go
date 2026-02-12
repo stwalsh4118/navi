@@ -58,11 +58,11 @@ func newTaskScrollTestModel() Model {
 		sessions: []session.Info{
 			{TmuxSession: "test", Status: session.StatusWorking, CWD: testProjectDir, Timestamp: time.Now().Unix()},
 		},
-		searchInput:    initSearchInput(),
-		taskSearchInput: initTaskSearchInput(),
-		taskCache:       task.NewResultCache(),
+		searchInput:      initSearchInput(),
+		taskSearchInput:  initTaskSearchInput(),
+		taskCache:        task.NewResultCache(),
 		taskGlobalConfig: &task.GlobalConfig{},
-		taskGroups:      groups,
+		taskGroups:       groups,
 		taskExpandedGroups: map[string]bool{
 			"g1": true,
 			"g2": true,
@@ -77,7 +77,9 @@ func newTaskScrollTestModel() Model {
 		},
 		taskPanelVisible: true,
 		taskPanelFocused: true,
-		taskPanelHeight:  10, // Small panel to force scrolling: maxLines = 10-3 = 7
+		taskPanelHeight:  10, // Small panel to force scrolling
+		taskSortMode:     taskSortSource,
+		taskFilterMode:   taskFilterAll,
 	}
 	return m
 }
@@ -421,7 +423,8 @@ func TestTaskPanelViewportLines(t *testing.T) {
 
 		maxLines := m.taskPanelViewportLines()
 
-		expected := 10 - 3 // height - (header + borders)
+		headerLines := m.taskPanelHeaderLines() // 2 when summary line shown (groups with tasks)
+		expected := 10 - headerLines - 2        // height - header - borders
 		if maxLines != expected {
 			t.Errorf("expected %d viewport lines, got %d", expected, maxLines)
 		}
@@ -434,7 +437,8 @@ func TestTaskPanelViewportLines(t *testing.T) {
 
 		maxLines := m.taskPanelViewportLines()
 
-		expected := 10 - 3 - 1 // height - chrome - search bar
+		headerLines := m.taskPanelHeaderLines()
+		expected := 10 - headerLines - 2 - 1 // height - header - borders - search bar
 		if maxLines != expected {
 			t.Errorf("expected %d viewport lines with search, got %d", expected, maxLines)
 		}

@@ -58,6 +58,8 @@ func newTaskTestModel() Model {
 		taskProjectConfigs: []task.ProjectConfig{
 			{Tasks: task.ProjectTaskConfig{Provider: "test"}, ProjectDir: testProjectDir},
 		},
+		taskSortMode:   taskSortSource,
+		taskFilterMode: taskFilterAll,
 	}
 	return m
 }

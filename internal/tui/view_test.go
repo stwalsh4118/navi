@@ -233,6 +233,20 @@ func TestRenderFooter(t *testing.T) {
 	})
 }
 
+func TestRenderFooterTaskPanel(t *testing.T) {
+	t.Run("shows task panel keybindings when focused", func(t *testing.T) {
+		m := Model{width: 120, height: 24, taskPanelFocused: true}
+		result := m.renderFooter()
+
+		expectedKeys := []string{"J/K groups", "exp/coll", "accord", "s/S sort", "filter", "refresh", "quit"}
+		for _, key := range expectedKeys {
+			if !strings.Contains(result, key) {
+				t.Errorf("task panel footer should contain %q, got: %s", key, result)
+			}
+		}
+	})
+}
+
 func TestRenderPreview(t *testing.T) {
 	t.Run("returns empty string when preview not visible", func(t *testing.T) {
 		m := Model{
