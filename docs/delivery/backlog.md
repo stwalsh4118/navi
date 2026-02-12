@@ -42,7 +42,7 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 34 | User | As a user, I want enhanced session creation with shell-only mode, directory tab-completion, clone session, and attach-after-create so that session setup is faster and more flexible | Proposed | [View Details](./34/prd.md) |
 | 35 | User | As a user, I want built-in provider scripts embedded in the binary, custom providers loaded from ~/.config/navi/providers/, and all config consolidated under ~/.config/navi/ so that navi works reliably from anywhere with a single config directory | Agreed | [View Details](./35/prd.md) |
 | 36 | User | As a user, I want navi to build and run on Windows with platform-appropriate paths and graceful degradation for Unix-only features so that I can use navi across operating systems | Proposed | [View Details](./36/prd.md) |
-| 37 | User | As a user, I want sorting, filtering, progress indicators, summary stats, and improved navigation in the task view so that I can efficiently manage a large backlog | Agreed | [View Details](./37/prd.md) |
+| 37 | User | As a user, I want sorting, filtering, progress indicators, summary stats, and improved navigation in the task view so that I can efficiently manage a large backlog | Done | [View Details](./37/prd.md) |
 
 ## History Log
 
@@ -122,3 +122,4 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 2026-02-12 00:00:00 | 36 | Created | Windows Build Support and Cross-Platform Compatibility | User |
 | 2026-02-12 00:00:00 | 37 | Created | Task View Enhancements — Sorting, Filtering, Progress, and Navigation | User |
 | 2026-02-12 07:37:46 | 37 | Status Change | Proposed → Agreed - Approved for task breakdown | User |
+| 2026-02-12 08:49:09 | 37 | Status Change | InProgress → Done - All 7 tasks Done, all tests pass with -race, go vet clean | AI_Agent |
