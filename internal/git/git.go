@@ -14,14 +14,15 @@ import (
 
 // Info represents git repository information for a session's working directory.
 type Info struct {
-	Branch     string `json:"branch"`               // Current branch name
-	Dirty      bool   `json:"dirty"`                // Whether there are uncommitted changes
-	Ahead      int    `json:"ahead"`                // Number of commits ahead of remote
-	Behind     int    `json:"behind"`               // Number of commits behind remote
-	LastCommit string `json:"last_commit"`          // Short hash + subject of last commit
-	Remote     string `json:"remote"`               // Remote URL (for GitHub detection)
-	PRNum      int    `json:"pr_num,omitempty"`     // GitHub PR number for current branch (from gh CLI)
-	FetchedAt  int64  `json:"fetched_at,omitempty"` // Unix timestamp when git info was fetched
+	Branch     string    `json:"branch"`               // Current branch name
+	Dirty      bool      `json:"dirty"`                // Whether there are uncommitted changes
+	Ahead      int       `json:"ahead"`                // Number of commits ahead of remote
+	Behind     int       `json:"behind"`               // Number of commits behind remote
+	LastCommit string    `json:"last_commit"`          // Short hash + subject of last commit
+	Remote     string    `json:"remote"`               // Remote URL (for GitHub detection)
+	PRNum      int       `json:"pr_num,omitempty"`     // GitHub PR number for current branch (from gh CLI)
+	PRDetail   *PRDetail `json:"pr_detail,omitempty"`  // Extended PR metadata (lazy-loaded)
+	FetchedAt  int64     `json:"fetched_at,omitempty"` // Unix timestamp when git info was fetched
 }
 
 // GitHubInfo contains parsed GitHub repository information from a remote URL.

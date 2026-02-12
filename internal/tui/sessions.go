@@ -152,6 +152,13 @@ func gitTickCmd() tea.Cmd {
 	})
 }
 
+// prAutoRefreshTickCmd returns a command that fires after prAutoRefreshInterval.
+func prAutoRefreshTickCmd() tea.Cmd {
+	return tea.Tick(prAutoRefreshInterval, func(t time.Time) tea.Msg {
+		return prAutoRefreshTickMsg(t)
+	})
+}
+
 // pollGitInfoCmd returns a command that polls git info for local session working directories.
 // Git info is fetched concurrently for all local sessions to minimize latency.
 // Remote sessions are handled separately by pollRemoteGitInfoCmd.
@@ -311,22 +318,47 @@ func fetchRemoteGitCmd(pool *remote.SSHPool, remoteName, cwd string) tea.Cmd {
 	}
 }
 
-// fetchPRCmd returns a command that fetches PR info for a specific directory.
+// fetchPRCmd returns a command that fetches PR detail for a specific directory.
 // This is called lazily (e.g., when opening git detail view) to avoid slow gh CLI calls on every poll.
 func fetchPRCmd(cwd string) tea.Cmd {
 	return func() tea.Msg {
 		dir := pathutil.ExpandPath(cwd)
-		prNum := git.GetPRNumber(dir)
-		return gitPRMsg{cwd: cwd, prNum: prNum}
+		prDetail := git.GetPRDetail(dir)
+		prNum := 0
+		if prDetail != nil {
+			prNum = prDetail.Number
+		}
+		return gitPRMsg{cwd: cwd, prNum: prNum, prDetail: prDetail}
 	}
 }
 
-// fetchRemotePRCmd returns a command that fetches PR info using branch and remote URL
+// fetchPRCommentsCmd fetches PR comments asynchronously.
+func fetchPRCommentsCmd(cwd string, prNum int) tea.Cmd {
+	return func() tea.Msg {
+		dir := pathutil.ExpandPath(cwd)
+		comments, err := git.GetPRComments(dir, prNum)
+		return gitPRCommentsMsg{comments: comments, err: err}
+	}
+}
+
+// fetchRemotePRCommentsCmd fetches PR comments for remote sessions.
+func fetchRemotePRCommentsCmd(owner, repo string, prNum int) tea.Cmd {
+	return func() tea.Msg {
+		comments, err := git.GetPRCommentsByRepo(owner, repo, prNum)
+		return gitPRCommentsMsg{comments: comments, err: err}
+	}
+}
+
+// fetchRemotePRCmd returns a command that fetches PR detail using branch and remote URL
 // instead of a local directory. Used for remote sessions where the CWD doesn't exist locally.
 func fetchRemotePRCmd(cwd, branch, remoteURL string) tea.Cmd {
 	return func() tea.Msg {
-		prNum := git.GetPRNumberByRepo(branch, remoteURL)
-		return gitPRMsg{cwd: cwd, prNum: prNum}
+		prDetail := git.GetPRDetailByRepo(branch, remoteURL)
+		prNum := 0
+		if prDetail != nil {
+			prNum = prDetail.Number
+		}
+		return gitPRMsg{cwd: cwd, prNum: prNum, prDetail: prDetail}
 	}
 }
 
