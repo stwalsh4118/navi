@@ -22,7 +22,7 @@ import (
 type Model struct {
 	sessions            []session.Info
 	cursor              int
-	sessionScrollOffset int    // First visible session index for session list scrolling
+	sessionScrollOffset int // First visible session index for session list scrolling
 	width               int
 	height              int
 	err                 error
@@ -40,65 +40,70 @@ type Model struct {
 	sessionToModify *session.Info   // Session being killed or renamed
 
 	// Preview pane state
-	previewVisible     bool          // Whether preview pane is shown
-	previewUserEnabled bool          // User's intended state (for restore after terminal resize)
-	previewContent     string        // Cached captured output
-	previewLayout      PreviewLayout // Current layout mode (default: PreviewLayoutSide)
-	previewWidth       int           // Width of preview pane in columns (side layout)
-	previewHeight      int           // Height of preview pane in rows (bottom layout)
-	previewWrap        bool          // Whether to wrap long lines (true) or truncate (false)
-	previewScrollOffset int          // First visible line in preview pane
-	previewAutoScroll   bool         // Auto-scroll to bottom on new content (default true)
-	previewFocused      bool         // Whether keyboard focus is in preview pane
-	previewLastCapture time.Time     // Last capture timestamp for debouncing
-	previewLastCursor  int           // Last cursor position for detecting cursor changes
+	previewVisible      bool          // Whether preview pane is shown
+	previewUserEnabled  bool          // User's intended state (for restore after terminal resize)
+	previewContent      string        // Cached captured output
+	previewLayout       PreviewLayout // Current layout mode (default: PreviewLayoutSide)
+	previewWidth        int           // Width of preview pane in columns (side layout)
+	previewHeight       int           // Height of preview pane in rows (bottom layout)
+	previewWrap         bool          // Whether to wrap long lines (true) or truncate (false)
+	previewScrollOffset int           // First visible line in preview pane
+	previewAutoScroll   bool          // Auto-scroll to bottom on new content (default true)
+	previewFocused      bool          // Whether keyboard focus is in preview pane
+	previewLastCapture  time.Time     // Last capture timestamp for debouncing
+	previewLastCursor   int           // Last cursor position for detecting cursor changes
 
 	// Git info cache
 	gitCache map[string]*git.Info // Cache of git info by session working directory
 
 	// Remote session support
-	Remotes    []remote.Config // Configured remote machines
-	SSHPool    *remote.SSHPool // SSH connection pool for remotes
+	Remotes    []remote.Config    // Configured remote machines
+	SSHPool    *remote.SSHPool    // SSH connection pool for remotes
 	filterMode session.FilterMode // Current session filter mode
 
 	// Search and filter state
-	searchQuery    string          // Current search text
-	searchMode     bool            // Whether search input is active
-	searchInput    textinput.Model // Text input for search
-	searchMatches  []int           // Indices of matching sessions in the filtered list
-	currentMatchIdx int            // Position within searchMatches (which match is "current")
-	statusFilter   string          // Active status filter (empty = show all)
-	hideOffline    bool            // Whether to hide offline/done sessions (default false = show all)
-	sortMode       SortMode        // Active sort mode
+	searchQuery     string          // Current search text
+	searchMode      bool            // Whether search input is active
+	searchInput     textinput.Model // Text input for search
+	searchMatches   []int           // Indices of matching sessions in the filtered list
+	currentMatchIdx int             // Position within searchMatches (which match is "current")
+	statusFilter    string          // Active status filter (empty = show all)
+	hideOffline     bool            // Whether to hide offline/done sessions (default false = show all)
+	sortMode        SortMode        // Active sort mode
 
 	// Task panel state
-	taskPanelVisible    bool                            // Whether task panel is shown below session list
-	taskPanelUserEnabled bool                           // User's intended state (for restore after terminal resize)
-	taskPanelFocused    bool                            // Whether keyboard focus is inside the task panel
-	taskPanelHeight     int                             // Height of task panel in rows
-	taskCursor          int                             // Cursor position in flat task item list
-	taskScrollOffset    int                             // First visible item index for task panel scrolling
-	taskExpandedGroups  map[string]bool                 // Which groups are expanded (collapsed by default)
-	taskSearchMode       bool                            // Whether task search input is active
-	taskSearchQuery      string                          // Current task search text
-	taskSearchInput      textinput.Model                 // Text input for task search
-	taskSearchMatches    []int                           // Indices of matching task items in visible list
-	taskCurrentMatchIdx  int                             // Position within taskSearchMatches
-	taskGroups          []task.TaskGroup                // Displayed task groups (for focused project)
-	taskGroupsByProject map[string][]task.TaskGroup     // All task groups keyed by project dir
-	taskFocusedProject  string                          // Project dir whose tasks are displayed
-	taskErrors          map[string]error                // Provider errors keyed by project dir
-	taskProjectConfigs  []task.ProjectConfig            // Discovered project configs
-	taskCache           *task.ResultCache               // Cache for provider results
-	taskGlobalConfig    *task.GlobalConfig              // Global task config
-	taskLastCWDs        []string                        // Last seen session CWDs (for change detection)
+	taskPanelVisible     bool                        // Whether task panel is shown below session list
+	taskPanelUserEnabled bool                        // User's intended state (for restore after terminal resize)
+	taskPanelFocused     bool                        // Whether keyboard focus is inside the task panel
+	taskPanelHeight      int                         // Height of task panel in rows
+	taskCursor           int                         // Cursor position in flat task item list
+	taskScrollOffset     int                         // First visible item index for task panel scrolling
+	taskExpandedGroups   map[string]bool             // Which groups are expanded (collapsed by default)
+	taskSearchMode       bool                        // Whether task search input is active
+	taskSearchQuery      string                      // Current task search text
+	taskSearchInput      textinput.Model             // Text input for task search
+	taskSearchMatches    []int                       // Indices of matching task items in visible list
+	taskCurrentMatchIdx  int                         // Position within taskSearchMatches
+	taskGroups           []task.TaskGroup            // Displayed task groups (for focused project)
+	taskGroupsByProject  map[string][]task.TaskGroup // All task groups keyed by project dir
+	taskFocusedProject   string                      // Project dir whose tasks are displayed
+	taskErrors           map[string]error            // Provider errors keyed by project dir
+	taskProjectConfigs   []task.ProjectConfig        // Discovered project configs
+	taskCache            *task.ResultCache           // Cache for provider results
+	taskGlobalConfig     *task.GlobalConfig          // Global task config
+	taskLastCWDs         []string                    // Last seen session CWDs (for change detection)
+	taskSortMode         taskSortMode                // Current sort mode for task groups
+	taskSortReversed     bool                        // Whether to reverse the sort direction
+	taskFilterMode       taskFilterMode              // Current filter mode for task groups
+	taskAccordionMode    bool                        // Accordion mode: expanding one group collapses others
+	taskRefreshing       bool                        // Whether a manual refresh is in progress
 
 	// Content viewer state
-	contentViewerTitle      string     // Title displayed in the content viewer header
-	contentViewerLines      []string   // Content split into lines for scrolling
-	contentViewerScroll     int        // Current scroll offset (line index of first visible line)
+	contentViewerTitle      string      // Title displayed in the content viewer header
+	contentViewerLines      []string    // Content split into lines for scrolling
+	contentViewerScroll     int         // Current scroll offset (line index of first visible line)
 	contentViewerMode       ContentMode // Content type (plain text or diff)
-	contentViewerPrevDialog DialogMode // Dialog to return to when closing (DialogNone if standalone)
+	contentViewerPrevDialog DialogMode  // Dialog to return to when closing (DialogNone if standalone)
 }
 
 // Message types for Bubble Tea communication.
@@ -612,6 +617,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tasksMsg:
 		m.taskGroupsByProject = msg.groupsByProject
 		m.taskErrors = msg.errors
+		m.taskRefreshing = false // Clear refreshing indicator
 		// Update displayed groups if task panel is visible
 		if m.taskPanelVisible {
 			m.updateTaskPanelForCursor()
@@ -1179,17 +1185,7 @@ func (m Model) updateTaskPanelFocus(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if item.isGroup {
 			// Toggle group expansion (same as space)
-			if m.taskExpandedGroups[item.groupID] {
-				delete(m.taskExpandedGroups, item.groupID)
-			} else {
-				m.taskExpandedGroups[item.groupID] = true
-			}
-			items := m.getVisibleTaskItems()
-			if m.taskCursor >= len(items) && len(items) > 0 {
-				m.taskCursor = len(items) - 1
-			}
-			m.clampTaskScrollOffset(m.taskPanelViewportLines())
-			m.ensureTaskCursorVisible(m.taskPanelViewportLines())
+			m.toggleGroupExpansion(item.groupID)
 			return m, nil
 		}
 		// Task item: open URL externally or file in content viewer
@@ -1199,21 +1195,70 @@ func (m Model) updateTaskPanelFocus(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Toggle group expansion
 		item := m.getSelectedTaskItem()
 		if item != nil && item.isGroup {
-			if m.taskExpandedGroups[item.groupID] {
-				delete(m.taskExpandedGroups, item.groupID)
-			} else {
-				m.taskExpandedGroups[item.groupID] = true
-			}
-			// Clamp cursor after expansion change
-			items := m.getVisibleTaskItems()
-			if m.taskCursor >= len(items) && len(items) > 0 {
-				m.taskCursor = len(items) - 1
-			}
-			// Clamp scroll offset after expansion change
-			m.clampTaskScrollOffset(m.taskPanelViewportLines())
-			m.ensureTaskCursorVisible(m.taskPanelViewportLines())
+			m.toggleGroupExpansion(item.groupID)
 		}
 		return m, nil
+
+	case "s":
+		// Cycle sort mode: source → status → name → progress → source
+		currentItem := m.getSelectedTaskItem()
+		m.taskSortMode = nextTaskSortMode(m.taskSortMode)
+		// Cursor stability: try to keep cursor on the same item
+		m.preserveTaskCursor(currentItem)
+		return m, nil
+
+	case "S":
+		// Toggle sort direction (ascending/descending)
+		m.taskSortReversed = !m.taskSortReversed
+		return m, nil
+
+	case "f":
+		// Cycle filter mode: all → active → incomplete → all
+		currentItem := m.getSelectedTaskItem()
+		m.taskFilterMode = nextTaskFilterMode(m.taskFilterMode)
+		// Cursor stability: try to keep cursor on the same item
+		m.preserveTaskCursor(currentItem)
+		// Recompute search matches within new filtered set
+		if m.taskSearchQuery != "" {
+			m.computeTaskSearchMatches()
+		}
+		return m, nil
+
+	case "J":
+		// Jump to next group header
+		m.jumpToNextGroup()
+		m.ensureTaskCursorVisible(m.taskPanelViewportLines())
+		return m, nil
+
+	case "K":
+		// Jump to previous group header
+		m.jumpToPrevGroup()
+		m.ensureTaskCursorVisible(m.taskPanelViewportLines())
+		return m, nil
+
+	case "e":
+		// Toggle expand/collapse all groups
+		m.toggleExpandCollapseAll()
+		m.clampTaskScrollOffset(m.taskPanelViewportLines())
+		m.ensureTaskCursorVisible(m.taskPanelViewportLines())
+		return m, nil
+
+	case "a":
+		// Toggle accordion mode
+		m.taskAccordionMode = !m.taskAccordionMode
+		return m, nil
+
+	case "r":
+		// Manual refresh: invalidate cache and re-execute provider
+		if m.taskRefreshing {
+			return m, nil // Ignore if already refreshing
+		}
+		m.taskRefreshing = true
+		// Invalidate cache for current project
+		if m.taskFocusedProject != "" && m.taskCache != nil {
+			m.taskCache.Invalidate(m.taskFocusedProject)
+		}
+		return m, taskRefreshCmd(m.taskProjectConfigs, m.taskCache, m.taskGlobalConfig, task.DefaultProviderTimeout)
 
 	case "/":
 		// Enter task search mode
@@ -1292,17 +1337,7 @@ func (m Model) updateTaskSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Toggle group expansion even during search
 		item := m.getSelectedTaskItem()
 		if item != nil && item.isGroup {
-			if m.taskExpandedGroups[item.groupID] {
-				delete(m.taskExpandedGroups, item.groupID)
-			} else {
-				m.taskExpandedGroups[item.groupID] = true
-			}
-			items := m.getVisibleTaskItems()
-			if m.taskCursor >= len(items) && len(items) > 0 {
-				m.taskCursor = len(items) - 1
-			}
-			m.clampTaskScrollOffset(m.taskPanelViewportLines())
-			m.ensureTaskCursorVisible(m.taskPanelViewportLines())
+			m.toggleGroupExpansion(item.groupID)
 		}
 		return m, nil
 	}
@@ -1348,15 +1383,19 @@ type taskItem struct {
 }
 
 // getVisibleTaskItems returns the flat list of navigable items based on expand state.
+// Applies the current filter and sort pipeline before building the item list.
 // When a task search query is active, all items remain visible but groups containing
 // matches are auto-expanded. Match highlighting is handled separately via taskSearchMatches.
 func (m Model) getVisibleTaskItems() []taskItem {
 	var items []taskItem
 	groupNum := 0
 
+	// Apply filter and sort pipeline
+	groups := m.getSortedAndFilteredTaskGroups()
+
 	if m.taskSearchQuery != "" {
 		// Search mode: show all groups, auto-expand groups that contain matches
-		for _, g := range m.taskGroups {
+		for _, g := range groups {
 			groupMatches := exactMatch(m.taskSearchQuery, g.Title)
 
 			// Check if any tasks in this group match
@@ -1397,7 +1436,7 @@ func (m Model) getVisibleTaskItems() []taskItem {
 	}
 
 	// Normal mode: respect expand/collapse state
-	for _, g := range m.taskGroups {
+	for _, g := range groups {
 		groupNum++
 		items = append(items, taskItem{
 			isGroup: true,
@@ -1489,6 +1528,142 @@ func (m Model) getSelectedTaskItem() *taskItem {
 	return nil
 }
 
+// jumpToNextGroup moves the task cursor to the next group header, wrapping at bounds.
+func (m *Model) jumpToNextGroup() {
+	items := m.getVisibleTaskItems()
+	if len(items) == 0 {
+		return
+	}
+	// Search forward from current position for next group header
+	for i := m.taskCursor + 1; i < len(items); i++ {
+		if items[i].isGroup {
+			m.taskCursor = i
+			return
+		}
+	}
+	// Wrap to first group
+	for i := 0; i <= m.taskCursor; i++ {
+		if items[i].isGroup {
+			m.taskCursor = i
+			return
+		}
+	}
+}
+
+// jumpToPrevGroup moves the task cursor to the previous group header, wrapping at bounds.
+func (m *Model) jumpToPrevGroup() {
+	items := m.getVisibleTaskItems()
+	if len(items) == 0 {
+		return
+	}
+	// Search backward from current position for previous group header
+	for i := m.taskCursor - 1; i >= 0; i-- {
+		if items[i].isGroup {
+			m.taskCursor = i
+			return
+		}
+	}
+	// Wrap to last group
+	for i := len(items) - 1; i >= m.taskCursor; i-- {
+		if items[i].isGroup {
+			m.taskCursor = i
+			return
+		}
+	}
+}
+
+// toggleExpandCollapseAll expands all groups if any are collapsed, or collapses all if all are expanded.
+func (m *Model) toggleExpandCollapseAll() {
+	groups := m.getSortedAndFilteredTaskGroups()
+	if len(groups) == 0 {
+		return
+	}
+
+	// Check if any group is collapsed
+	anyCollapsed := false
+	for _, g := range groups {
+		if !m.taskExpandedGroups[g.ID] {
+			anyCollapsed = true
+			break
+		}
+	}
+
+	if anyCollapsed {
+		// Expand all
+		for _, g := range groups {
+			m.taskExpandedGroups[g.ID] = true
+		}
+	} else {
+		// Collapse all
+		for _, g := range groups {
+			delete(m.taskExpandedGroups, g.ID)
+		}
+	}
+}
+
+// toggleGroupExpansion toggles a group's expanded state, applying accordion mode if active.
+// Also clamps cursor and scroll offset after the change.
+func (m *Model) toggleGroupExpansion(groupID string) {
+	if m.taskExpandedGroups[groupID] {
+		// Collapsing
+		delete(m.taskExpandedGroups, groupID)
+	} else {
+		// Expanding
+		if m.taskAccordionMode {
+			m.applyAccordion(groupID)
+		} else {
+			m.taskExpandedGroups[groupID] = true
+		}
+	}
+	// Clamp cursor and scroll after expansion change
+	items := m.getVisibleTaskItems()
+	if m.taskCursor >= len(items) && len(items) > 0 {
+		m.taskCursor = len(items) - 1
+	}
+	m.clampTaskScrollOffset(m.taskPanelViewportLines())
+	m.ensureTaskCursorVisible(m.taskPanelViewportLines())
+}
+
+// applyAccordion collapses all groups except the specified one.
+func (m *Model) applyAccordion(expandGroupID string) {
+	groups := m.getSortedAndFilteredTaskGroups()
+	for _, g := range groups {
+		if g.ID == expandGroupID {
+			m.taskExpandedGroups[g.ID] = true
+		} else {
+			delete(m.taskExpandedGroups, g.ID)
+		}
+	}
+}
+
+// preserveTaskCursor attempts to keep the cursor on the same item after a sort/filter change.
+// If the item is no longer visible, moves to the nearest valid position.
+func (m *Model) preserveTaskCursor(prevItem *taskItem) {
+	items := m.getVisibleTaskItems()
+	if len(items) == 0 {
+		m.taskCursor = 0
+		m.taskScrollOffset = 0
+		return
+	}
+
+	if prevItem != nil {
+		// Try to find the same item in the new list
+		for i, item := range items {
+			if item.isGroup == prevItem.isGroup && item.groupID == prevItem.groupID && item.taskID == prevItem.taskID {
+				m.taskCursor = i
+				m.ensureTaskCursorVisible(m.taskPanelViewportLines())
+				return
+			}
+		}
+	}
+
+	// Item not found — clamp cursor
+	if m.taskCursor >= len(items) {
+		m.taskCursor = len(items) - 1
+	}
+	m.ensureTaskCursorVisible(m.taskPanelViewportLines())
+}
+
 // moveTaskCursor moves the task cursor by delta, wrapping at bounds.
 // After moving, it ensures the cursor is visible within the scroll viewport.
 func (m *Model) moveTaskCursor(delta int) {
@@ -1577,10 +1752,22 @@ func (m *Model) clampTaskScrollOffset(maxLines int) {
 	}
 }
 
+// taskPanelHeaderLines returns the number of lines used by the task panel header.
+// Returns 2 when the summary stats line is shown, 1 otherwise.
+func (m Model) taskPanelHeaderLines() int {
+	height := m.getTaskPanelHeight()
+	contentLines := height - 3 // base header(1) + borders(2)
+	if contentLines >= 4 && len(m.taskGroups) > 0 {
+		return 2 // header + summary line
+	}
+	return 1
+}
+
 // taskPanelViewportLines returns the number of content lines available in the task panel.
 func (m Model) taskPanelViewportLines() int {
 	height := m.getTaskPanelHeight()
-	maxLines := height - 3 // header(1) + borders(2)
+	headerLines := m.taskPanelHeaderLines()
+	maxLines := height - headerLines - 2 // header(N) + borders(2)
 	if m.taskSearchMode || m.taskSearchQuery != "" {
 		maxLines-- // search bar takes 1 line
 	}
@@ -2171,6 +2358,8 @@ func InitialModel() Model {
 		taskGroupsByProject: make(map[string][]task.TaskGroup),
 		taskCache:           task.NewResultCache(),
 		taskGlobalConfig:    globalTaskConfig,
+		taskSortMode:        taskSortSource,
+		taskFilterMode:      taskFilterAll,
 		previewAutoScroll:   true,
 	}
 }

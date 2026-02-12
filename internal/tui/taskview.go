@@ -72,7 +72,8 @@ func (m Model) renderTaskPanel(width, height int) string {
 		b.WriteString(taskEmptyStyle.Render("  No tasks found"))
 	} else {
 		// Render task list with collapsible groups
-		maxLines := height - 3 // header(1) + borders(2)
+		headerLines := m.taskPanelHeaderLines()
+		maxLines := height - headerLines - 2 // header(N) + borders(2)
 		if m.taskSearchMode || m.taskSearchQuery != "" {
 			maxLines-- // search bar takes 1 line
 		}
@@ -102,7 +103,12 @@ func (m Model) renderTaskPanel(width, height int) string {
 	return strings.Join(renderedLines, "\n")
 }
 
-// renderTaskPanelHeader renders the task panel header with project name and counts.
+// statusSummaryOrder defines the display order for status summary categories.
+var statusSummaryOrder = []string{"done", "active", "review", "blocked", "todo"}
+
+// renderTaskPanelHeader renders the task panel header with project name, counts,
+// and optionally a second line with status breakdown summary.
+// Returns (headerString, numberOfHeaderLines).
 func (m Model) renderTaskPanelHeader(width int) string {
 	// Project name
 	projectName := ""
@@ -113,8 +119,9 @@ func (m Model) renderTaskPanelHeader(width int) string {
 		}
 	}
 
-	// Count tasks
-	totalTasks := totalTaskCount(m.taskGroups)
+	// Use unfiltered groups for counts (always show full context)
+	allGroups := m.taskGroups
+	totalTasks := totalTaskCount(allGroups)
 
 	var headerParts []string
 	headerParts = append(headerParts, previewHeaderStyle.Render("─ "+taskPanelTitle))
@@ -122,10 +129,104 @@ func (m Model) renderTaskPanelHeader(width int) string {
 		headerParts = append(headerParts, dimStyle.Render(projectName))
 	}
 	if totalTasks > 0 {
-		headerParts = append(headerParts, dimStyle.Render(fmt.Sprintf("(%d tasks, %d groups)", totalTasks, len(m.taskGroups))))
+		headerParts = append(headerParts, dimStyle.Render(fmt.Sprintf("(%d tasks, %d groups)", totalTasks, len(allGroups))))
 	}
 
-	return strings.Join(headerParts, " ")
+	// Add sort mode indicator (hidden when source + ascending, to reduce noise)
+	if m.taskSortMode != taskSortSource || m.taskSortReversed {
+		arrow := "↑"
+		if m.taskSortReversed {
+			arrow = "↓"
+		}
+		headerParts = append(headerParts, dimStyle.Render(fmt.Sprintf("sort:%s%s", m.taskSortMode, arrow)))
+	}
+
+	// Add filter mode indicator (hidden when all)
+	if m.taskFilterMode != taskFilterAll {
+		filterInfo := fmt.Sprintf("filter:%s", m.taskFilterMode)
+		hiddenCount := len(allGroups) - len(m.getFilteredTaskGroups())
+		if hiddenCount > 0 {
+			filterInfo += fmt.Sprintf(" (%d hidden)", hiddenCount)
+		}
+		headerParts = append(headerParts, dimStyle.Render(filterInfo))
+	}
+
+	// Add accordion indicator
+	if m.taskAccordionMode {
+		headerParts = append(headerParts, dimStyle.Render("accordion"))
+	}
+
+	// Add refreshing indicator
+	if m.taskRefreshing {
+		headerParts = append(headerParts, dimStyle.Render(italicStyle.Render("Refreshing...")))
+	}
+
+	firstLine := strings.Join(headerParts, " ")
+
+	// Second line: status summary (only when panel height allows)
+	height := m.getTaskPanelHeight()
+	contentLines := height - 3 // header(1) + borders(2)
+	if contentLines >= 4 && len(allGroups) > 0 {
+		summary := groupStatusSummary(allGroups)
+		summaryLine := renderStatusSummary(summary)
+		if summaryLine != "" {
+			return firstLine + "\n" + "  " + summaryLine
+		}
+	}
+
+	return firstLine
+}
+
+// groupStatusCategory maps a group status string to a canonical category.
+func groupStatusCategory(status string) string {
+	lower := strings.ToLower(status)
+	switch {
+	case lower == "done" || lower == "closed" || lower == "completed":
+		return "done"
+	case lower == "active" || lower == "in_progress" || lower == "inprogress" || lower == "working":
+		return "active"
+	case lower == "review" || lower == "inreview":
+		return "review"
+	case lower == "blocked":
+		return "blocked"
+	default:
+		return "todo"
+	}
+}
+
+// groupStatusSummary counts groups by canonical status category.
+func groupStatusSummary(groups []task.TaskGroup) map[string]int {
+	counts := make(map[string]int)
+	for _, g := range groups {
+		cat := groupStatusCategory(g.Status)
+		counts[cat]++
+	}
+	return counts
+}
+
+// renderStatusSummary formats a status summary line like "12 done · 3 active · 1 review · 18 todo".
+// Only includes categories with non-zero counts.
+func renderStatusSummary(counts map[string]int) string {
+	var parts []string
+	for _, cat := range statusSummaryOrder {
+		if n, ok := counts[cat]; ok && n > 0 {
+			var styled string
+			switch cat {
+			case "done":
+				styled = greenStyle.Render(fmt.Sprintf("%d", n)) + " " + dimStyle.Render(cat)
+			case "active":
+				styled = cyanStyle.Render(fmt.Sprintf("%d", n)) + " " + dimStyle.Render(cat)
+			case "review":
+				styled = magentaStyle.Render(fmt.Sprintf("%d", n)) + " " + dimStyle.Render(cat)
+			case "blocked":
+				styled = redStyle.Render(fmt.Sprintf("%d", n)) + " " + dimStyle.Render(cat)
+			case "todo":
+				styled = yellowStyle.Render(fmt.Sprintf("%d", n)) + " " + dimStyle.Render(cat)
+			}
+			parts = append(parts, styled)
+		}
+	}
+	return strings.Join(parts, dimStyle.Render(" · "))
 }
 
 // isTaskSearchMatch checks if a task item index is in the taskSearchMatches list.
@@ -242,11 +343,11 @@ func (m Model) renderTaskPanelGroupHeader(item taskItem, selected bool, width in
 		chevron = taskChevronExpanded
 	}
 
-	// Count tasks in this group
-	taskCount := 0
-	for _, g := range m.taskGroups {
-		if g.ID == item.groupID {
-			taskCount = len(g.Tasks)
+	// Find group to compute progress
+	var group *task.TaskGroup
+	for i := range m.taskGroups {
+		if m.taskGroups[i].ID == item.groupID {
+			group = &m.taskGroups[i]
 			break
 		}
 	}
@@ -254,9 +355,18 @@ func (m Model) renderTaskPanelGroupHeader(item taskItem, selected bool, width in
 	styledChevron := taskGroupChevronStyle.Render(chevron)
 	groupNum := dimStyle.Render(fmt.Sprintf("%d.", item.number))
 	styledTitle := taskGroupStyle.Render(item.title)
-	countLabel := dimStyle.Render(fmt.Sprintf("(%d)", taskCount))
 
-	line := fmt.Sprintf("%s%s %s %s %s", marker, styledChevron, groupNum, styledTitle, countLabel)
+	// Progress display: [done/total] ██░░ for groups with tasks, (0) for empty groups
+	var progressLabel string
+	if group != nil && len(group.Tasks) > 0 {
+		done, total := groupProgress(*group)
+		bar := renderProgressBar(done, total)
+		progressLabel = dimStyle.Render(fmt.Sprintf("[%d/%d]", done, total)) + " " + dimStyle.Render(bar)
+	} else {
+		progressLabel = dimStyle.Render("(0)")
+	}
+
+	line := fmt.Sprintf("%s%s %s %s %s", marker, styledChevron, groupNum, styledTitle, progressLabel)
 
 	// Status on the right
 	if item.status != "" {
@@ -321,4 +431,43 @@ func totalTaskCount(groups []task.TaskGroup) int {
 		total += len(g.Tasks)
 	}
 	return total
+}
+
+// groupProgress counts the number of done-equivalent tasks in a group.
+// Returns (done, total) where done includes tasks with status "done", "closed", or "completed".
+func groupProgress(group task.TaskGroup) (done int, total int) {
+	total = len(group.Tasks)
+	for _, t := range group.Tasks {
+		if isDoneStatus(t.Status) {
+			done++
+		}
+	}
+	return done, total
+}
+
+// isDoneStatus returns true if the status represents a completed task.
+func isDoneStatus(status string) bool {
+	lower := strings.ToLower(status)
+	return lower == "done" || lower == "closed" || lower == "completed"
+}
+
+// progressBarWidth is the number of characters in the mini progress bar.
+const progressBarWidth = 4
+
+// renderProgressBar produces a 4-character progress bar using █ (filled) and ░ (empty).
+// Returns an empty string if total is 0.
+func renderProgressBar(done, total int) string {
+	if total == 0 {
+		return ""
+	}
+	filled := done * progressBarWidth / total
+	if filled > progressBarWidth {
+		filled = progressBarWidth
+	}
+	// Ensure at least 1 filled block when there's partial progress
+	if done > 0 && filled == 0 {
+		filled = 1
+	}
+	empty := progressBarWidth - filled
+	return strings.Repeat("█", filled) + strings.Repeat("░", empty)
 }

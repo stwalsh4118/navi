@@ -471,7 +471,7 @@ func (m Model) renderFooter() string {
 		parts = append(parts, "j/k scroll", "PgUp/PgDn page", "g/G top/bottom", "Tab/Esc back", "[/] resize", "q quit")
 	} else if m.taskPanelFocused {
 		// Show task panel focus keybindings
-		parts = append(parts, "↑/↓ nav", "/ search", "Space expand", "Tab/Esc back", "T close", "[/] resize", "q quit")
+		parts = append(parts, "↑/↓ nav", "J/K groups", "/ search", "Space expand", "e exp/coll", "a accord", "s/S sort", "f filter", "r refresh", "Tab/Esc back", "T close", "[/] resize", "q quit")
 	} else {
 		// Normal session keybindings
 		parts = append(parts, "↑/↓ nav", "⏎ attach", "/ search", "p preview", "T tasks")
