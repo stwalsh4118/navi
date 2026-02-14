@@ -123,4 +123,4 @@ tts_engine: auto   # auto-detect, or specify: say, espeak-ng, espeak, spd-say
 
 ## Related Tasks
 
-_Tasks will be created when this PBI is approved via `/plan-pbi 42`._
+[View Tasks](./tasks.md)
