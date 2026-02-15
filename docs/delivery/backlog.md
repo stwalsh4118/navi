@@ -48,6 +48,7 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 40 | User | As a user, I want navi to automatically detect which AI agents (Claude Code, Codex, etc.) are running in each tmux session's panes so that I can track multi-agent workflows | Proposed | [View Details](./40/prd.md) |
 | 41 | User | As a user, I want the TUI to show per-agent status indicators for each session so that I can see both Claude Code and Codex state at a glance | Proposed | [View Details](./41/prd.md) |
 | 42 | User | As a user, I want configurable audio notifications with custom sound files and TTS session name announcements when session statuses change so that I have audio awareness without watching the TUI | Done | [View Details](./42/prd.md) |
+| 43 | User | As a user, I want tmux sessions embedded inside the Navi UI with a status bar so that polling, notifications, and audio alerts continue working while I interact with a session | Proposed | [View Details](./43/prd.md) |
 
 ## History Log
 
@@ -138,3 +139,4 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 2026-02-15 11:48:19 | 42 | Status Change | Agreed → InProgress - Implemented all 6 tasks including audio package, TUI integration, and E2E verification | AI_Agent |
 | 2026-02-15 11:48:19 | 42 | Status Change | InProgress → InReview - All tasks completed and verification checks passing | AI_Agent |
 | 2026-02-15 11:48:19 | 42 | Status Change | InReview → Done - User requested complete PBI and logical conventional commits | AI_Agent |
+| 20260215-131839 | 43 | Created | PBI created from feature request: Embedded terminal mode — embed tmux sessions inside the Navi TUI with PTY-based terminal emulation using bubbleterm | AI_Agent |
