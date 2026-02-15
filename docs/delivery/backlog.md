@@ -49,7 +49,7 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 41 | User | As a user, I want the TUI to show per-agent status indicators for each session so that I can see both Claude Code and Codex state at a glance | Proposed | [View Details](./41/prd.md) |
 | 42 | User | As a user, I want configurable audio notifications with custom sound files and TTS session name announcements when session statuses change so that I have audio awareness without watching the TUI | Done | [View Details](./42/prd.md) |
 | 43 | User | As a user, I want tmux sessions embedded inside the Navi UI with a status bar so that polling, notifications, and audio alerts continue working while I interact with a session | Proposed | [View Details](./43/prd.md) |
-| 44 | User | As a user, I want audio notifications to continue and session status visible in the tmux status bar while attached to a session so that I stay aware without detaching | Proposed | [View Details](./44/prd.md) |
+| 44 | User | As a user, I want audio notifications to continue and session status visible in the tmux status bar while attached to a session so that I stay aware without detaching | Agreed | [View Details](./44/prd.md) |
 
 ## History Log
 
@@ -142,3 +142,4 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 2026-02-15 11:48:19 | 42 | Status Change | InReview → Done - User requested complete PBI and logical conventional commits | AI_Agent |
 | 20260215-131839 | 43 | Created | PBI created from feature request: Embedded terminal mode — embed tmux sessions inside the Navi TUI with PTY-based terminal emulation using bubbleterm | AI_Agent |
 | 20260215-165012 | 44 | Created | PBI created from feature request: Background attach monitor (goroutine polling + audio during tea.ExecProcess) and navi status CLI command for tmux status bar | AI_Agent |
+| 2026-02-15 17:05:29 | 44 | Status Change | Proposed → Agreed - User approved for task breakdown | User |

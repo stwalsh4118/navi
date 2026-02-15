@@ -90,4 +90,4 @@ N/A — this is backend/CLI only. The only "UI" is the tmux status bar string, w
 
 ## Related Tasks
 
-_Tasks will be created when this PBI is approved via `/plan-pbi 44`._
+[View Tasks](./tasks.md)
