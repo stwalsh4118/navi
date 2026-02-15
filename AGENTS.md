@@ -1,7 +1,7 @@
 # Project Policy — Core Rules
 
 > Detailed workflows live in skills. Load the relevant skill BEFORE starting any workflow step.
-> Shared reference material is in `~/.claude/_references/`.
+> Shared reference material is in `~/.codex/_references/`.
 
 ## Actors
 
@@ -54,7 +54,7 @@
 
 ## Shared References
 
-Detailed policy material lives in `~/.claude/_references/`:
+Detailed policy material lives in `~/.codex/_references/`:
 
 | Reference | Content |
 |-----------|---------|
