@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/stwalsh4118/navi/internal/audio"
 	"github.com/stwalsh4118/navi/internal/git"
 	"github.com/stwalsh4118/navi/internal/pathutil"
 	"github.com/stwalsh4118/navi/internal/remote"
@@ -57,9 +58,12 @@ type Model struct {
 	gitCache map[string]*git.Info // Cache of git info by session working directory
 
 	// Remote session support
-	Remotes    []remote.Config    // Configured remote machines
-	SSHPool    *remote.SSHPool    // SSH connection pool for remotes
-	filterMode session.FilterMode // Current session filter mode
+	Remotes           []remote.Config      // Configured remote machines
+	SSHPool           *remote.SSHPool      // SSH connection pool for remotes
+	filterMode        session.FilterMode   // Current session filter mode
+	audioNotifier     *audio.Notifier      // Audio notification manager
+	lastSessionStates map[string]string    // Last known status by session name
+	audioNotifyFn     func(string, string) // Test hook; defaults to notifier.Notify
 
 	// Search and filter state
 	searchQuery     string          // Current search text
@@ -682,6 +686,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
+		m.detectStatusChanges(m.sessions)
 
 		// Trigger immediate git poll if cache is empty and we have sessions
 		// This makes git info appear quickly on startup instead of waiting for gitPollInterval
@@ -766,6 +771,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			}
+			m.detectStatusChanges(m.sessions)
 
 			// Clamp cursor for filtered sessions
 			filteredSessions := m.getFilteredSessions()
@@ -2442,6 +2448,13 @@ func InitialModel() Model {
 		globalTaskConfig = &task.GlobalConfig{}
 	}
 
+	audioConfig, err := audio.LoadConfig(audio.DefaultConfigPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to load audio config: %v\n", err)
+		audioConfig = audio.DefaultConfig()
+	}
+	audioNotifier := audio.NewNotifier(audioConfig)
+
 	return Model{
 		sessions:            []session.Info{},
 		cursor:              0,
@@ -2459,6 +2472,48 @@ func InitialModel() Model {
 		taskSortMode:        taskSortSource,
 		taskFilterMode:      taskFilterAll,
 		previewAutoScroll:   true,
+		audioNotifier:       audioNotifier,
+		lastSessionStates:   make(map[string]string),
+	}
+}
+
+func (m *Model) detectStatusChanges(current []session.Info) {
+	if m.audioNotifier == nil {
+		return
+	}
+	if m.lastSessionStates == nil {
+		m.lastSessionStates = make(map[string]string)
+	}
+
+	currentStates := make(map[string]string, len(current))
+	for _, s := range current {
+		currentStates[s.TmuxSession] = s.Status
+	}
+
+	// First poll should only initialize state to avoid startup noise.
+	if len(m.lastSessionStates) == 0 {
+		m.lastSessionStates = currentStates
+		return
+	}
+
+	for sessionName, newStatus := range currentStates {
+		if oldStatus, ok := m.lastSessionStates[sessionName]; !ok {
+			continue
+		} else if oldStatus != newStatus {
+			m.notifyStatusChange(sessionName, newStatus)
+		}
+	}
+
+	m.lastSessionStates = currentStates
+}
+
+func (m *Model) notifyStatusChange(sessionName, newStatus string) {
+	if m.audioNotifyFn != nil {
+		m.audioNotifyFn(sessionName, newStatus)
+		return
+	}
+	if m.audioNotifier != nil {
+		m.audioNotifier.Notify(sessionName, newStatus)
 	}
 }
 
