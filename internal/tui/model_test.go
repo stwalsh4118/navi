@@ -1,13 +1,18 @@
 package tui
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/stwalsh4118/navi/internal/monitor"
 	"github.com/stwalsh4118/navi/internal/remote"
 	"github.com/stwalsh4118/navi/internal/session"
 )
@@ -379,6 +384,68 @@ func TestEnterKey(t *testing.T) {
 }
 
 func TestAttachDoneMsg(t *testing.T) {
+	t.Run("enter starts attach monitor for local session", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		origDir := session.StatusDir
+		session.StatusDir = tmpDir
+		t.Cleanup(func() { session.StatusDir = origDir })
+
+		m := Model{
+			width:    80,
+			height:   24,
+			sessions: []session.Info{{TmuxSession: "local-session", Status: session.StatusWorking}},
+			cursor:   0,
+		}
+
+		msg := tea.KeyMsg{Type: tea.KeyEnter}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if updated.attachMonitor == nil {
+			t.Fatal("attachMonitor should be started on local attach")
+		}
+		if updated.attachMonitorCancel == nil {
+			t.Fatal("attachMonitorCancel should be set on local attach")
+		}
+
+		updated.stopAttachMonitor()
+	})
+
+	t.Run("enter starts attach monitor for remote session", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		origDir := session.StatusDir
+		session.StatusDir = tmpDir
+		t.Cleanup(func() { session.StatusDir = origDir })
+
+		pool := remote.NewSSHPool([]remote.Config{{
+			Name: "r1",
+			Host: "example.com",
+			User: "dev",
+			Key:  "/tmp/nonexistent-key",
+		}})
+
+		m := Model{
+			width:    80,
+			height:   24,
+			sessions: []session.Info{{TmuxSession: "remote-session", Status: session.StatusWorking, Remote: "r1"}},
+			cursor:   0,
+			SSHPool:  pool,
+		}
+
+		msg := tea.KeyMsg{Type: tea.KeyEnter}
+		newModel, _ := m.Update(msg)
+		updated := newModel.(Model)
+
+		if updated.attachMonitor == nil {
+			t.Fatal("attachMonitor should be started on remote attach")
+		}
+		if updated.attachMonitorCancel == nil {
+			t.Fatal("attachMonitorCancel should be set on remote attach")
+		}
+
+		updated.stopAttachMonitor()
+	})
+
 	t.Run("attachDoneMsg triggers poll command", func(t *testing.T) {
 		m := Model{
 			width:    80,
@@ -392,6 +459,45 @@ func TestAttachDoneMsg(t *testing.T) {
 
 		if cmd == nil {
 			t.Error("attachDoneMsg should return a poll command")
+		}
+	})
+
+	t.Run("attachDoneMsg stops monitor and hands off states", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		statusFile := filepath.Join(tmpDir, "handoff.json")
+		payload, err := json.Marshal(session.Info{TmuxSession: "handoff", Status: session.StatusPermission})
+		if err != nil {
+			t.Fatalf("Marshal failed: %v", err)
+		}
+		if err := os.WriteFile(statusFile, payload, 0644); err != nil {
+			t.Fatalf("WriteFile failed: %v", err)
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		mon := monitor.New(nil, tmpDir, 5*time.Millisecond)
+		mon.Start(ctx, map[string]string{"handoff": session.StatusWorking})
+
+		time.Sleep(30 * time.Millisecond)
+
+		m := Model{
+			width:               80,
+			height:              24,
+			attachMonitor:       mon,
+			attachMonitorCancel: cancel,
+			lastSessionStates:   map[string]string{"old": session.StatusIdle},
+		}
+
+		newModel, _ := m.Update(attachDoneMsg{})
+		updated := newModel.(Model)
+
+		if updated.attachMonitor != nil {
+			t.Fatal("attachMonitor should be cleared on attachDoneMsg")
+		}
+		if updated.attachMonitorCancel != nil {
+			t.Fatal("attachMonitorCancel should be cleared on attachDoneMsg")
+		}
+		if updated.lastSessionStates["handoff"] != session.StatusPermission {
+			t.Fatalf("lastSessionStates handoff = %q, want %q", updated.lastSessionStates["handoff"], session.StatusPermission)
 		}
 	})
 }
