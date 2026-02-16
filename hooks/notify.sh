@@ -62,27 +62,30 @@ if [ -n "$STDIN_JSON" ] && command -v jq &> /dev/null; then
         STORED_MAIN_SID=$(jq -r '.session_id // ""' "$SESSION_FILE" 2>/dev/null)
 
         if [ -n "$STORED_MAIN_SID" ] && [ "$HOOK_SESSION_ID" != "$STORED_MAIN_SID" ]; then
-            # This is a teammate event — don't let it corrupt the main session
-            # For Stop/SessionEnd, try to mark the agent as stopped via session_id match
-            if [ "$HOOK_EVENT" = "SessionEnd" ] || [ "$HOOK_EVENT" = "Stop" ]; then
-                UPDATED=$(jq \
-                    --arg sid "$HOOK_SESSION_ID" \
-                    --argjson ts "$CURRENT_TIME" \
-                    '
-                    if .team and .team.agents then
-                        .team.agents = [.team.agents[] |
-                            if .session_id == $sid then
-                                .status = "stopped" | .timestamp = $ts
-                            else . end]
-                    else . end
-                    ' "$SESSION_FILE" 2>/dev/null)
-                if [ -n "$UPDATED" ]; then
-                    TMPFILE=$(mktemp "$DIR/.tmp.XXXXXX")
-                    echo "$UPDATED" > "$TMPFILE"
-                    mv "$TMPFILE" "$SESSION_FILE"
+            # A session_id mismatch can happen when the main agent restarts.
+            # Only suppress events that are known to come from teammate/background flows.
+            if [ "$HOOK_EVENT" = "PostToolUse" ] || [ "$HOOK_EVENT" = "SessionEnd" ] || [ "$HOOK_EVENT" = "Stop" ]; then
+                # For Stop/SessionEnd, try to mark the teammate as stopped via session_id match.
+                if [ "$HOOK_EVENT" = "SessionEnd" ] || [ "$HOOK_EVENT" = "Stop" ]; then
+                    UPDATED=$(jq \
+                        --arg sid "$HOOK_SESSION_ID" \
+                        --argjson ts "$CURRENT_TIME" \
+                        '
+                        if .team and .team.agents then
+                            .team.agents = [.team.agents[] |
+                                if .session_id == $sid then
+                                    .status = "stopped" | .timestamp = $ts
+                                else . end]
+                        else . end
+                        ' "$SESSION_FILE" 2>/dev/null)
+                    if [ -n "$UPDATED" ]; then
+                        TMPFILE=$(mktemp "$DIR/.tmp.XXXXXX")
+                        echo "$UPDATED" > "$TMPFILE"
+                        mv "$TMPFILE" "$SESSION_FILE"
+                    fi
                 fi
+                exit 0
             fi
-            exit 0
         fi
     fi
 fi
@@ -187,6 +190,8 @@ RECENT_TOOLS="[]"
 
 # Preserve existing team data
 EXISTING_TEAM="null"
+# Preserve existing external agents data
+EXISTING_AGENTS="null"
 
 # Read existing session data if it exists
 if [ -f "$SESSION_FILE" ]; then
@@ -204,6 +209,8 @@ if [ -f "$SESSION_FILE" ]; then
 
         # Preserve existing team data so main session updates don't blow it away
         EXISTING_TEAM=$(jq '.team // null' "$SESSION_FILE" 2>/dev/null || echo "null")
+        # Preserve existing external agents data so main session updates don't blow it away
+        EXISTING_AGENTS=$(jq '.agents // null' "$SESSION_FILE" 2>/dev/null || echo "null")
 
         # Handle null/empty values from jq
         [ "$STARTED" = "null" ] && STARTED=0
@@ -214,6 +221,7 @@ if [ -f "$SESSION_FILE" ]; then
         [ "$TOOL_COUNTS" = "null" ] && TOOL_COUNTS="{}"
         [ "$RECENT_TOOLS" = "null" ] && RECENT_TOOLS="[]"
         [ "$EXISTING_TEAM" = "null" ] && EXISTING_TEAM=""
+        [ "$EXISTING_AGENTS" = "null" ] && EXISTING_AGENTS=""
     fi
 fi
 
@@ -258,6 +266,12 @@ if [ -n "$EXISTING_TEAM" ] && [ "$EXISTING_TEAM" != "null" ]; then
   \"team\": $EXISTING_TEAM"
 fi
 
+AGENTS_FIELD=""
+if [ -n "$EXISTING_AGENTS" ] && [ "$EXISTING_AGENTS" != "null" ]; then
+    AGENTS_FIELD=",
+  \"agents\": $EXISTING_AGENTS"
+fi
+
 # Extract session_id from stdin for storage in the session JSON
 MAIN_SESSION_ID=""
 if [ -n "$STDIN_JSON" ] && command -v jq &> /dev/null; then
@@ -285,7 +299,7 @@ cat > "$TMPFILE" <<EOF
       "recent": $RECENT_TOOLS,
       "counts": $TOOL_COUNTS
     }
-  }$TEAM_FIELD
+  }$TEAM_FIELD$AGENTS_FIELD
 }
 EOF
 mv "$TMPFILE" "$SESSION_FILE"

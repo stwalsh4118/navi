@@ -15,6 +15,12 @@ type Info struct {
     Remote      string
     Metrics     *metrics.Metrics
     Team        *TeamInfo
+    Agents      map[string]ExternalAgent
+}
+
+type ExternalAgent struct {
+    Status    string
+    Timestamp int64
 }
 ```
 

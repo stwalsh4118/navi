@@ -61,4 +61,48 @@ func TestReadStatusFiles(t *testing.T) {
 			t.Fatalf("Status = %q, want %q", sessions[0].Status, StatusWaiting)
 		}
 	})
+
+	t.Run("reads agents map from status file", func(t *testing.T) {
+		dir := t.TempDir()
+
+		multiAgentJSON := `{
+			"tmux_session": "multi",
+			"status": "working",
+			"message": "",
+			"cwd": "/tmp",
+			"timestamp": 123,
+			"agents": {
+				"opencode": {"status": "idle", "timestamp": 120},
+				"copilot": {"status": "working", "timestamp": 121}
+			}
+		}`
+
+		if err := os.WriteFile(filepath.Join(dir, "multi.json"), []byte(multiAgentJSON), 0644); err != nil {
+			t.Fatalf("WriteFile multi-agent JSON failed: %v", err)
+		}
+
+		sessions, err := ReadStatusFiles(dir)
+		if err != nil {
+			t.Fatalf("ReadStatusFiles() error = %v, want nil", err)
+		}
+		if len(sessions) != 1 {
+			t.Fatalf("len(sessions) = %d, want 1", len(sessions))
+		}
+
+		opencode, ok := sessions[0].Agents["opencode"]
+		if !ok {
+			t.Fatal("expected opencode agent in parsed status file")
+		}
+		if opencode.Status != StatusIdle {
+			t.Fatalf("opencode status = %q, want %q", opencode.Status, StatusIdle)
+		}
+
+		copilot, ok := sessions[0].Agents["copilot"]
+		if !ok {
+			t.Fatal("expected copilot agent in parsed status file")
+		}
+		if copilot.Status != StatusWorking {
+			t.Fatalf("copilot status = %q, want %q", copilot.Status, StatusWorking)
+		}
+	})
 }
