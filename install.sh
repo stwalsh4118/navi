@@ -12,6 +12,9 @@ echo
 # Constants
 SESSIONS_DIR="$HOME/.claude-sessions"
 HOOKS_DIR="$SESSIONS_DIR/hooks"
+OPENCODE_PLUGIN_DIR="$HOME/.config/opencode/plugins"
+OPENCODE_PLUGIN_SRC="plugins/opencode/navi.js"
+OPENCODE_PLUGIN_NAME="navi.js"
 
 # Create directories
 mkdir -p "$SESSIONS_DIR"
@@ -31,6 +34,15 @@ if [ -f "$SCRIPT_DIR/hooks/notify.sh" ]; then
 else
     echo "✗ Error: hooks/notify.sh not found in $SCRIPT_DIR"
     exit 1
+fi
+
+# Install OpenCode navi plugin (non-fatal if source file missing)
+mkdir -p "$OPENCODE_PLUGIN_DIR"
+if [ -f "$SCRIPT_DIR/$OPENCODE_PLUGIN_SRC" ]; then
+    cp "$SCRIPT_DIR/$OPENCODE_PLUGIN_SRC" "$OPENCODE_PLUGIN_DIR/$OPENCODE_PLUGIN_NAME"
+    echo "✓ Installed OpenCode navi plugin"
+else
+    echo "⚠ Warning: $OPENCODE_PLUGIN_SRC not found in $SCRIPT_DIR (skipping OpenCode plugin install)"
 fi
 
 # Copy tool-tracker hook script
@@ -204,7 +216,7 @@ echo "╰───────────────────────�
 echo
 echo "To use navi:"
 echo "  1. Start tmux sessions for your projects"
-echo "  2. Launch Claude Code in each session"
+echo "  2. Launch Claude Code or OpenCode in each session"
 echo "  3. Run 'navi' to monitor them"
 echo
 echo "Example:"

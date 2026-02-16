@@ -187,7 +187,7 @@ func TestSortSessionsWithTeamPriority(t *testing.T) {
 		sessions := []Info{
 			{TmuxSession: "plain-working", Status: StatusWorking, Timestamp: 100},
 			{TmuxSession: "team-permission", Status: StatusWorking, Timestamp: 50, Team: &TeamInfo{
-				Name: "proj",
+				Name:   "proj",
 				Agents: []AgentInfo{{Name: "a", Status: StatusPermission}},
 			}},
 		}
@@ -202,7 +202,7 @@ func TestSortSessionsWithTeamPriority(t *testing.T) {
 			{TmuxSession: "plain-working", Status: StatusWorking, Timestamp: 200},
 			{TmuxSession: "own-waiting", Status: StatusWaiting, Timestamp: 100},
 			{TmuxSession: "team-waiting", Status: StatusWorking, Timestamp: 50, Team: &TeamInfo{
-				Name: "proj",
+				Name:   "proj",
 				Agents: []AgentInfo{{Name: "a", Status: StatusWaiting}},
 			}},
 		}
@@ -325,6 +325,136 @@ func TestTeamInfoJSONRoundTrip(t *testing.T) {
 
 		if strings.Contains(string(data), `"team"`) {
 			t.Error("marshaled JSON should NOT contain team field when nil")
+		}
+	})
+}
+
+func TestExternalAgentJSONBehavior(t *testing.T) {
+	t.Run("JSON round-trip with agents", func(t *testing.T) {
+		info := Info{
+			TmuxSession: "test-session",
+			Status:      StatusWorking,
+			Timestamp:   1234567890,
+			Agents: map[string]ExternalAgent{
+				"opencode": {
+					Status:    StatusIdle,
+					Timestamp: 1234567888,
+				},
+			},
+		}
+
+		data, err := json.Marshal(info)
+		if err != nil {
+			t.Fatalf("Marshal failed: %v", err)
+		}
+
+		var decoded Info
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			t.Fatalf("Unmarshal failed: %v", err)
+		}
+
+		opencode, ok := decoded.Agents["opencode"]
+		if !ok {
+			t.Fatal("decoded Agents missing opencode entry")
+		}
+		if opencode.Status != StatusIdle {
+			t.Errorf("opencode status = %q, want %q", opencode.Status, StatusIdle)
+		}
+		if opencode.Timestamp != 1234567888 {
+			t.Errorf("opencode timestamp = %d, want %d", opencode.Timestamp, int64(1234567888))
+		}
+	})
+
+	t.Run("omit agents when nil", func(t *testing.T) {
+		info := Info{
+			TmuxSession: "test-session",
+			Status:      StatusWorking,
+			Timestamp:   1234567890,
+			Agents:      nil,
+		}
+
+		data, err := json.Marshal(info)
+		if err != nil {
+			t.Fatalf("Marshal failed: %v", err)
+		}
+
+		if strings.Contains(string(data), `"agents"`) {
+			t.Error("marshaled JSON should NOT contain agents field when nil")
+		}
+	})
+
+	t.Run("omit agents when empty", func(t *testing.T) {
+		info := Info{
+			TmuxSession: "test-session",
+			Status:      StatusWorking,
+			Timestamp:   1234567890,
+			Agents:      map[string]ExternalAgent{},
+		}
+
+		data, err := json.Marshal(info)
+		if err != nil {
+			t.Fatalf("Marshal failed: %v", err)
+		}
+
+		if strings.Contains(string(data), `"agents"`) {
+			t.Error("marshaled JSON should NOT contain agents field when empty")
+		}
+	})
+
+	t.Run("backward compatibility without agents", func(t *testing.T) {
+		const legacyJSON = `{"tmux_session":"legacy","status":"working","message":"ok","cwd":"/tmp","timestamp":123}`
+
+		var decoded Info
+		if err := json.Unmarshal([]byte(legacyJSON), &decoded); err != nil {
+			t.Fatalf("Unmarshal failed for legacy JSON: %v", err)
+		}
+
+		if decoded.Agents != nil {
+			t.Fatalf("Agents = %#v, want nil for legacy JSON", decoded.Agents)
+		}
+		if decoded.TmuxSession != "legacy" {
+			t.Errorf("TmuxSession = %q, want %q", decoded.TmuxSession, "legacy")
+		}
+		if decoded.Status != StatusWorking {
+			t.Errorf("Status = %q, want %q", decoded.Status, StatusWorking)
+		}
+	})
+
+	t.Run("multiple agents round-trip", func(t *testing.T) {
+		info := Info{
+			TmuxSession: "test-session",
+			Status:      StatusWorking,
+			Timestamp:   1234567890,
+			Agents: map[string]ExternalAgent{
+				"claude": {
+					Status:    StatusWorking,
+					Timestamp: 1234567890,
+				},
+				"opencode": {
+					Status:    StatusPermission,
+					Timestamp: 1234567880,
+				},
+			},
+		}
+
+		data, err := json.Marshal(info)
+		if err != nil {
+			t.Fatalf("Marshal failed: %v", err)
+		}
+
+		var decoded Info
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			t.Fatalf("Unmarshal failed: %v", err)
+		}
+
+		if len(decoded.Agents) != 2 {
+			t.Fatalf("Agents length = %d, want 2", len(decoded.Agents))
+		}
+		if decoded.Agents["claude"].Status != StatusWorking {
+			t.Errorf("claude status = %q, want %q", decoded.Agents["claude"].Status, StatusWorking)
+		}
+		if decoded.Agents["opencode"].Status != StatusPermission {
+			t.Errorf("opencode status = %q, want %q", decoded.Agents["opencode"].Status, StatusPermission)
 		}
 	})
 }
