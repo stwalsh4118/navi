@@ -79,6 +79,11 @@ func renderAgentIndicators(agents map[string]session.ExternalAgent, ccStatus str
 		case session.StatusWaiting:
 			icon = agentIndicatorFilled
 			styledIcon = yellowStyle.Render(icon)
+		case session.StatusError:
+			icon = agentIndicatorFilled
+			styledIcon = redStyle.Render(icon)
+		case session.StatusDone:
+			styledIcon = greenStyle.Render(icon)
 		case session.StatusIdle, session.StatusStopped:
 			styledIcon = grayStyle.Render(icon)
 		default:

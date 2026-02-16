@@ -955,6 +955,24 @@ func TestRenderAgentIndicators(t *testing.T) {
 		}
 	})
 
+	t.Run("renders error as red filled icon", func(t *testing.T) {
+		result := renderAgentIndicators(map[string]session.ExternalAgent{
+			"opencode": {Status: session.StatusError},
+		}, session.StatusWorking, false)
+		if !strings.Contains(result, redStyle.Render(agentIndicatorFilled)) {
+			t.Errorf("expected red filled icon for error, got %q", result)
+		}
+	})
+
+	t.Run("renders done as green hollow icon", func(t *testing.T) {
+		result := renderAgentIndicators(map[string]session.ExternalAgent{
+			"opencode": {Status: session.StatusDone},
+		}, session.StatusWorking, false)
+		if !strings.Contains(result, greenStyle.Render(agentIndicatorHollow)) {
+			t.Errorf("expected green hollow icon for done, got %q", result)
+		}
+	})
+
 	t.Run("renders multiple agents sorted by key", func(t *testing.T) {
 		result := renderAgentIndicators(map[string]session.ExternalAgent{
 			"zeta":     {Status: session.StatusIdle},
