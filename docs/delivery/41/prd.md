@@ -93,4 +93,4 @@ Session-level sorting and attention indicators should consider all agents:
 
 ## Related Tasks
 
-_Tasks will be created when this PBI is planned via `/plan-pbi 41`._
+[View Tasks](./tasks.md)
