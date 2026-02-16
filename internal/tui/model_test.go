@@ -465,7 +465,13 @@ func TestAttachDoneMsg(t *testing.T) {
 	t.Run("attachDoneMsg stops monitor and hands off states", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		statusFile := filepath.Join(tmpDir, "handoff.json")
-		payload, err := json.Marshal(session.Info{TmuxSession: "handoff", Status: session.StatusPermission})
+		payload, err := json.Marshal(session.Info{
+			TmuxSession: "handoff",
+			Status:      session.StatusPermission,
+			Agents: map[string]session.ExternalAgent{
+				"opencode": {Status: session.StatusIdle},
+			},
+		})
 		if err != nil {
 			t.Fatalf("Marshal failed: %v", err)
 		}
@@ -475,7 +481,9 @@ func TestAttachDoneMsg(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		mon := monitor.New(nil, tmpDir, 5*time.Millisecond)
-		mon.Start(ctx, map[string]string{"handoff": session.StatusWorking})
+		mon.Start(ctx, map[string]string{"handoff": session.StatusWorking}, map[string]map[string]string{
+			"handoff": {"opencode": session.StatusWorking},
+		})
 
 		time.Sleep(30 * time.Millisecond)
 
@@ -485,6 +493,7 @@ func TestAttachDoneMsg(t *testing.T) {
 			attachMonitor:       mon,
 			attachMonitorCancel: cancel,
 			lastSessionStates:   map[string]string{"old": session.StatusIdle},
+			lastAgentStates:     map[string]map[string]string{"old": {"opencode": session.StatusWorking}},
 		}
 
 		newModel, _ := m.Update(attachDoneMsg{})
@@ -498,6 +507,9 @@ func TestAttachDoneMsg(t *testing.T) {
 		}
 		if updated.lastSessionStates["handoff"] != session.StatusPermission {
 			t.Fatalf("lastSessionStates handoff = %q, want %q", updated.lastSessionStates["handoff"], session.StatusPermission)
+		}
+		if updated.lastAgentStates["handoff"]["opencode"] != session.StatusIdle {
+			t.Fatalf("lastAgentStates handoff = %q, want %q", updated.lastAgentStates["handoff"]["opencode"], session.StatusIdle)
 		}
 	})
 }

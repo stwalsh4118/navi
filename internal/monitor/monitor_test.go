@@ -44,7 +44,7 @@ func TestStartTracksStatesAndNotifies(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	m.Start(ctx, nil)
+	m.Start(ctx, nil, nil)
 
 	requireEventually(t, func() bool {
 		states := m.States()
@@ -81,7 +81,7 @@ func TestStartWithInitialStatesDoesNotSkipTransitions(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	m.Start(ctx, map[string]string{"s1": session.StatusWorking})
+	m.Start(ctx, map[string]string{"s1": session.StatusWorking}, nil)
 
 	select {
 	case got := <-called:
@@ -101,7 +101,7 @@ func TestStartCancelStopsPolling(t *testing.T) {
 
 	m := New(nil, dir, testPollInterval)
 	ctx, cancel := context.WithCancel(context.Background())
-	m.Start(ctx, nil)
+	m.Start(ctx, nil, nil)
 
 	requireEventually(t, func() bool {
 		states := m.States()
@@ -130,7 +130,7 @@ func TestStatesIsThreadSafeUnderConcurrentAccess(t *testing.T) {
 	m := New(nil, dir, testPollInterval)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	m.Start(ctx, nil)
+	m.Start(ctx, nil, nil)
 
 	requireEventually(t, func() bool {
 		states := m.States()
@@ -159,7 +159,7 @@ func TestNilNotifierDoesNotPanicAndTracksState(t *testing.T) {
 	m := New(nil, dir, testPollInterval)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	m.Start(ctx, map[string]string{"s1": session.StatusWorking})
+	m.Start(ctx, map[string]string{"s1": session.StatusWorking}, nil)
 
 	if err := writeStatus(dir, session.Info{TmuxSession: "s1", Status: session.StatusPermission}); err != nil {
 		t.Fatalf("writeStatus update failed: %v", err)
