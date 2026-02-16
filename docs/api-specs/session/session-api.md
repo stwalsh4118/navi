@@ -31,12 +31,24 @@ const (
     StatusWaiting    = "waiting"
     StatusPermission = "permission"
     StatusWorking    = "working"
+    StatusError      = "error"
     StatusIdle       = "idle"
     StatusStopped    = "stopped"
+    StatusDone       = "done"
 
     PollInterval     = 500 * time.Millisecond
     DefaultStatusDir = "~/.claude-sessions"
 )
+
+var StatusPriority = []string{
+    StatusPermission,
+    StatusWaiting,
+    StatusWorking,
+    StatusError,
+    StatusIdle,
+    StatusStopped,
+    StatusDone,
+}
 ```
 
 ## Status File IO
@@ -57,6 +69,7 @@ func SortSessions(sessions []Info)
 func AggregateMetrics(sessions []Info) *metrics.Metrics
 func HasPriorityTeammate(s Info) bool
 func HasPriorityExternalAgent(s Info) bool
+func CompositeStatus(s Info) (status string, source string)
 ```
 
 Sorting notes:

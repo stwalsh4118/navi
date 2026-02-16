@@ -19,9 +19,22 @@ const (
 	StatusWaiting    = "waiting"
 	StatusPermission = "permission"
 	StatusWorking    = "working"
+	StatusError      = "error"
 	StatusIdle       = "idle"
 	StatusStopped    = "stopped"
+	StatusDone       = "done"
 )
+
+// StatusPriority defines status precedence from highest to lowest.
+var StatusPriority = []string{
+	StatusPermission,
+	StatusWaiting,
+	StatusWorking,
+	StatusError,
+	StatusIdle,
+	StatusStopped,
+	StatusDone,
+}
 
 // Polling constants
 const (
@@ -103,23 +116,53 @@ func HasPriorityExternalAgent(s Info) bool {
 	return false
 }
 
-func hasActiveExternalAgent(s Info) bool {
-	if len(s.Agents) == 0 {
-		return false
-	}
-	for _, agent := range s.Agents {
-		if agent.Status == StatusWorking || agent.Status == StatusWaiting || agent.Status == StatusPermission {
-			return true
+func statusRank(status string) int {
+	for i, candidate := range StatusPriority {
+		if status == candidate {
+			return i
 		}
 	}
-	return false
+
+	return len(StatusPriority)
+}
+
+// CompositeStatus returns the highest-priority status across Claude Code and external agents.
+// Source is empty when Claude Code provides the winning status.
+func CompositeStatus(s Info) (status string, source string) {
+	if len(s.Agents) == 0 {
+		return s.Status, ""
+	}
+
+	bestStatus := s.Status
+	bestSource := ""
+	bestRank := statusRank(bestStatus)
+
+	for agentType, agent := range s.Agents {
+		rank := statusRank(agent.Status)
+		if rank < bestRank {
+			bestStatus = agent.Status
+			bestSource = agentType
+			bestRank = rank
+			continue
+		}
+
+		if rank == bestRank && bestSource != "" && agentType < bestSource {
+			bestStatus = agent.Status
+			bestSource = agentType
+		}
+	}
+
+	return bestStatus, bestSource
 }
 
 func sessionSortTier(s Info) int {
-	if s.Status == StatusWaiting || s.Status == StatusPermission || HasPriorityTeammate(s) || HasPriorityExternalAgent(s) {
+	compositeStatus, _ := CompositeStatus(s)
+	compositeRank := statusRank(compositeStatus)
+
+	if HasPriorityTeammate(s) || compositeRank <= statusRank(StatusWaiting) {
 		return sortTierPriority
 	}
-	if hasActiveExternalAgent(s) {
+	if compositeRank == statusRank(StatusWorking) {
 		return sortTierActive
 	}
 	return sortTierDefault

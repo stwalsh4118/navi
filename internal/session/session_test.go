@@ -30,6 +30,167 @@ func TestSortSessions(t *testing.T) {
 	}
 }
 
+func TestCompositeStatus(t *testing.T) {
+	t.Run("no external agents returns claude status", func(t *testing.T) {
+		statuses := []string{
+			StatusPermission,
+			StatusWaiting,
+			StatusWorking,
+			StatusError,
+			StatusIdle,
+			StatusStopped,
+			StatusDone,
+		}
+
+		for _, status := range statuses {
+			s := Info{Status: status}
+			gotStatus, gotSource := CompositeStatus(s)
+			if gotStatus != status {
+				t.Errorf("status %q: got status %q, want %q", status, gotStatus, status)
+			}
+			if gotSource != "" {
+				t.Errorf("status %q: got source %q, want empty", status, gotSource)
+			}
+		}
+	})
+
+	t.Run("single agent lower priority keeps claude", func(t *testing.T) {
+		s := Info{
+			Status: StatusWorking,
+			Agents: map[string]ExternalAgent{
+				"opencode": {Status: StatusIdle},
+			},
+		}
+
+		gotStatus, gotSource := CompositeStatus(s)
+		if gotStatus != StatusWorking || gotSource != "" {
+			t.Fatalf("got (%q, %q), want (%q, %q)", gotStatus, gotSource, StatusWorking, "")
+		}
+	})
+
+	t.Run("single agent higher priority wins with source", func(t *testing.T) {
+		s := Info{
+			Status: StatusIdle,
+			Agents: map[string]ExternalAgent{
+				"opencode": {Status: StatusWorking},
+			},
+		}
+
+		gotStatus, gotSource := CompositeStatus(s)
+		if gotStatus != StatusWorking || gotSource != "opencode" {
+			t.Fatalf("got (%q, %q), want (%q, %q)", gotStatus, gotSource, StatusWorking, "opencode")
+		}
+	})
+
+	t.Run("equal priority keeps claude", func(t *testing.T) {
+		s := Info{
+			Status: StatusWorking,
+			Agents: map[string]ExternalAgent{
+				"opencode": {Status: StatusWorking},
+			},
+		}
+
+		gotStatus, gotSource := CompositeStatus(s)
+		if gotStatus != StatusWorking || gotSource != "" {
+			t.Fatalf("got (%q, %q), want (%q, %q)", gotStatus, gotSource, StatusWorking, "")
+		}
+	})
+
+	t.Run("permission trumps all", func(t *testing.T) {
+		s := Info{
+			Status: StatusWorking,
+			Agents: map[string]ExternalAgent{
+				"opencode": {Status: StatusPermission},
+			},
+		}
+
+		gotStatus, gotSource := CompositeStatus(s)
+		if gotStatus != StatusPermission || gotSource != "opencode" {
+			t.Fatalf("got (%q, %q), want (%q, %q)", gotStatus, gotSource, StatusPermission, "opencode")
+		}
+	})
+
+	t.Run("multiple agents chooses highest priority", func(t *testing.T) {
+		s := Info{
+			Status: StatusIdle,
+			Agents: map[string]ExternalAgent{
+				"opencode": {Status: StatusWorking},
+				"reviewer": {Status: StatusPermission},
+			},
+		}
+
+		gotStatus, gotSource := CompositeStatus(s)
+		if gotStatus != StatusPermission || gotSource != "reviewer" {
+			t.Fatalf("got (%q, %q), want (%q, %q)", gotStatus, gotSource, StatusPermission, "reviewer")
+		}
+	})
+
+	t.Run("equal-priority external ties pick deterministic source", func(t *testing.T) {
+		s := Info{
+			Status: StatusIdle,
+			Agents: map[string]ExternalAgent{
+				"zeta":  {Status: StatusWorking},
+				"alpha": {Status: StatusWorking},
+			},
+		}
+
+		gotStatus, gotSource := CompositeStatus(s)
+		if gotStatus != StatusWorking || gotSource != "alpha" {
+			t.Fatalf("got (%q, %q), want (%q, %q)", gotStatus, gotSource, StatusWorking, "alpha")
+		}
+	})
+
+	t.Run("unknown status is lowest priority", func(t *testing.T) {
+		s := Info{
+			Status: StatusIdle,
+			Agents: map[string]ExternalAgent{
+				"opencode": {Status: "mystery"},
+			},
+		}
+
+		gotStatus, gotSource := CompositeStatus(s)
+		if gotStatus != StatusIdle || gotSource != "" {
+			t.Fatalf("got (%q, %q), want (%q, %q)", gotStatus, gotSource, StatusIdle, "")
+		}
+	})
+
+	t.Run("empty external map behaves like no external agents", func(t *testing.T) {
+		s := Info{Status: StatusStopped, Agents: map[string]ExternalAgent{}}
+		gotStatus, gotSource := CompositeStatus(s)
+		if gotStatus != StatusStopped || gotSource != "" {
+			t.Fatalf("got (%q, %q), want (%q, %q)", gotStatus, gotSource, StatusStopped, "")
+		}
+	})
+
+	t.Run("error status participates in priority order", func(t *testing.T) {
+		s := Info{
+			Status: StatusIdle,
+			Agents: map[string]ExternalAgent{
+				"opencode": {Status: StatusError},
+			},
+		}
+
+		gotStatus, gotSource := CompositeStatus(s)
+		if gotStatus != StatusError || gotSource != "opencode" {
+			t.Fatalf("got (%q, %q), want (%q, %q)", gotStatus, gotSource, StatusError, "opencode")
+		}
+	})
+
+	t.Run("done status returns claude on tie", func(t *testing.T) {
+		s := Info{
+			Status: StatusDone,
+			Agents: map[string]ExternalAgent{
+				"opencode": {Status: StatusDone},
+			},
+		}
+
+		gotStatus, gotSource := CompositeStatus(s)
+		if gotStatus != StatusDone || gotSource != "" {
+			t.Fatalf("got (%q, %q), want (%q, %q)", gotStatus, gotSource, StatusDone, "")
+		}
+	})
+}
+
 func TestAggregateMetrics(t *testing.T) {
 	t.Run("empty sessions returns nil", func(t *testing.T) {
 		result := AggregateMetrics([]Info{})
@@ -306,6 +467,21 @@ func TestSortSessionsWithExternalAgentPriority(t *testing.T) {
 		}
 	})
 
+	t.Run("composite permission from external sorts to priority tier", func(t *testing.T) {
+		sessions := []Info{
+			{TmuxSession: "plain-idle", Status: StatusIdle, Timestamp: 100},
+			{TmuxSession: "external-permission", Status: StatusIdle, Timestamp: 50, Agents: map[string]ExternalAgent{
+				"opencode": {Status: StatusPermission},
+			}},
+		}
+
+		SortSessions(sessions)
+
+		if sessions[0].TmuxSession != "external-permission" {
+			t.Errorf("expected external-permission first, got %s", sessions[0].TmuxSession)
+		}
+	})
+
 	t.Run("session with external waiting sorts with own waiting", func(t *testing.T) {
 		sessions := []Info{
 			{TmuxSession: "plain-working", Status: StatusWorking, Timestamp: 200},
@@ -383,6 +559,59 @@ func TestSortSessionsWithExternalAgentPriority(t *testing.T) {
 			t.Errorf("expected external-working second, got %s", sessions[1].TmuxSession)
 		}
 	})
+
+	t.Run("composite working from external sorts to active tier", func(t *testing.T) {
+		sessions := []Info{
+			{TmuxSession: "done", Status: StatusDone, Timestamp: 100},
+			{TmuxSession: "external-working", Status: StatusIdle, Timestamp: 50, Agents: map[string]ExternalAgent{
+				"opencode": {Status: StatusWorking},
+			}},
+		}
+
+		SortSessions(sessions)
+
+		if sessions[0].TmuxSession != "external-working" {
+			t.Errorf("expected external-working first, got %s", sessions[0].TmuxSession)
+		}
+	})
+}
+
+func TestSortSessionsCompositePriorityOrder(t *testing.T) {
+	sessions := []Info{
+		{
+			TmuxSession: "cc-idle",
+			Status:      StatusIdle,
+			Timestamp:   100,
+		},
+		{
+			TmuxSession: "oc-working",
+			Status:      StatusIdle,
+			Timestamp:   90,
+			Agents: map[string]ExternalAgent{
+				"opencode": {Status: StatusWorking},
+			},
+		},
+		{
+			TmuxSession: "oc-permission",
+			Status:      StatusIdle,
+			Timestamp:   80,
+			Agents: map[string]ExternalAgent{
+				"opencode": {Status: StatusPermission},
+			},
+		},
+	}
+
+	SortSessions(sessions)
+
+	if sessions[0].TmuxSession != "oc-permission" {
+		t.Fatalf("expected oc-permission first, got %s", sessions[0].TmuxSession)
+	}
+	if sessions[1].TmuxSession != "oc-working" {
+		t.Fatalf("expected oc-working second, got %s", sessions[1].TmuxSession)
+	}
+	if sessions[2].TmuxSession != "cc-idle" {
+		t.Fatalf("expected cc-idle third, got %s", sessions[2].TmuxSession)
+	}
 }
 
 func TestStatusStoppedConstant(t *testing.T) {

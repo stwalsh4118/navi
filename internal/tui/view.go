@@ -47,7 +47,7 @@ func agentShortLabel(agentType string) string {
 	return string(runes[:2])
 }
 
-func renderAgentIndicators(agents map[string]session.ExternalAgent) string {
+func renderAgentIndicators(agents map[string]session.ExternalAgent, ccStatus string, compositeDiffersFromCC bool) string {
 	if len(agents) == 0 {
 		return ""
 	}
@@ -58,7 +58,11 @@ func renderAgentIndicators(agents map[string]session.ExternalAgent) string {
 	}
 	sort.Strings(keys)
 
-	parts := make([]string, 0, len(keys))
+	parts := make([]string, 0, len(keys)+1)
+	if compositeDiffersFromCC {
+		parts = append(parts, fmt.Sprintf("[CC %s]", StatusIcon(ccStatus)))
+	}
+
 	for _, key := range keys {
 		agent := agents[key]
 		label := agentShortLabel(key)
@@ -99,6 +103,8 @@ func renderAgentDetail(s session.Info, width int) string {
 		return ""
 	}
 
+	compositeStatus, compositeSource := session.CompositeStatus(s)
+
 	contentWidth := width - len(rowIndent)
 	if contentWidth < 20 {
 		contentWidth = 20
@@ -106,6 +112,12 @@ func renderAgentDetail(s session.Info, width int) string {
 
 	var lines []string
 	lines = append(lines, rowIndent+boldStyle.Render("Agents"))
+
+	compositeLabel := compositeStatus
+	if compositeSource != "" {
+		compositeLabel += fmt.Sprintf(" (%s)", compositeSource)
+	}
+	lines = append(lines, rowIndent+fmt.Sprintf("Composite %s %s", StatusIcon(compositeStatus), compositeLabel))
 
 	ccLine := fmt.Sprintf("CC %s %s", StatusIcon(s.Status), s.Status)
 	if s.Message != "" {
@@ -279,7 +291,8 @@ func (m Model) renderSession(s session.Info, selected bool, width int) string {
 	}
 
 	// First line: marker + icon + name + [remote] + age
-	icon := StatusIcon(s.Status)
+	compositeStatus, compositeSource := session.CompositeStatus(s)
+	icon := StatusIcon(compositeStatus)
 	name := boldStyle.Render(s.TmuxSession)
 
 	// Add remote label if this is a remote session
@@ -304,7 +317,8 @@ func (m Model) renderSession(s session.Info, selected bool, width int) string {
 		}
 	}
 
-	agentIndicators := renderAgentIndicators(s.Agents)
+	compositeDiffersFromCC := compositeStatus != s.Status
+	agentIndicators := renderAgentIndicators(s.Agents, s.Status, compositeDiffersFromCC)
 	if agentIndicators != "" {
 		agentIndicators = " " + agentIndicators
 	}
@@ -348,7 +362,11 @@ func (m Model) renderSession(s session.Info, selected bool, width int) string {
 	// Message line if present (indented, dimmed/italic)
 	if s.Message != "" {
 		b.WriteString("\n")
-		msg := truncate(s.Message, width-len(rowIndent))
+		displayMessage := s.Message
+		if compositeSource != "" {
+			displayMessage += fmt.Sprintf(" (%s)", compositeSource)
+		}
+		msg := truncate(displayMessage, width-len(rowIndent))
 		b.WriteString(rowIndent)
 		b.WriteString(dimStyle.Render(italicStyle.Render(fmt.Sprintf("\"%s\"", msg))))
 	}
