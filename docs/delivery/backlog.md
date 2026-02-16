@@ -45,7 +45,7 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 37 | User | As a user, I want sorting, filtering, progress indicators, summary stats, and improved navigation in the task view so that I can efficiently manage a large backlog | Done | [View Details](./37/prd.md) |
 | 38 | User | As a user, I want enhanced GitHub PR integration with CI/CD check statuses, review state, comments, labels, draft/merge status, and change stats so that I have full PR context without leaving the TUI | Agreed | [View Details](./38/prd.md) |
 | 39 | User | As a user, I want remote sessions to have full lifecycle parity with local sessions (stale cleanup, TUI creation, responsive status updates) so that managing remote sessions feels identical to local ones | Proposed | [View Details](./39/prd.md) |
-| 40 | User | As a user, I want OpenCode to push status updates to navi via its plugin system so that navi can track OpenCode sessions alongside Claude Code | Proposed | [View Details](./40/prd.md) |
+| 40 | User | As a user, I want OpenCode to push status updates to navi via its plugin system so that navi can track OpenCode sessions alongside Claude Code | Agreed | [View Details](./40/prd.md) |
 | 41 | User | As a user, I want the TUI to show per-agent status indicators for each session so that I can see both Claude Code and OpenCode state at a glance | Proposed | [View Details](./41/prd.md) |
 | 42 | User | As a user, I want configurable audio notifications with custom sound files and TTS session name announcements when session statuses change so that I have audio awareness without watching the TUI | Done | [View Details](./42/prd.md) |
 | 43 | User | As a user, I want tmux sessions embedded inside the Navi UI with a status bar so that polling, notifications, and audio alerts continue working while I interact with a session | Proposed | [View Details](./43/prd.md) |
@@ -148,3 +148,4 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 20260215-172950 | 44 | Status Change | InReview → Done - User requested complete PBI with logical conventional commits | AI_Agent |
 | 20260215-192155 | 40 | Updated | Rewritten: Tmux Pane Agent Detection → OpenCode Status Hook Integration. Replaced passive process-tree detection of Codex with active status pushing via OpenCode plugin system | AI_Agent |
 | 20260215-192155 | 41 | Updated | Rewritten: Multi-Agent TUI Display updated from Codex to OpenCode. Single shared status file with agents map instead of separate files | AI_Agent |
+| 2026-02-15 19:24:55 | 40 | Status Change | Proposed → Agreed - User approved for task breakdown | User |

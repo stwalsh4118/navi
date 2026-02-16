@@ -155,4 +155,4 @@ This PBI covers infrastructure only — no TUI changes. Just status for now — 
 
 ## Related Tasks
 
-_Tasks will be created when this PBI is planned via `/plan-pbi 40`._
+[View Tasks](./tasks.md)
