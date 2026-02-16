@@ -909,14 +909,14 @@ func TestRenderTeamAgents(t *testing.T) {
 
 func TestRenderAgentIndicators(t *testing.T) {
 	t.Run("returns empty string for nil map", func(t *testing.T) {
-		result := renderAgentIndicators(nil)
+		result := renderAgentIndicators(nil, session.StatusWorking, false)
 		if result != "" {
 			t.Errorf("expected empty string, got %q", result)
 		}
 	})
 
 	t.Run("returns empty string for empty map", func(t *testing.T) {
-		result := renderAgentIndicators(map[string]session.ExternalAgent{})
+		result := renderAgentIndicators(map[string]session.ExternalAgent{}, session.StatusWorking, false)
 		if result != "" {
 			t.Errorf("expected empty string, got %q", result)
 		}
@@ -925,7 +925,7 @@ func TestRenderAgentIndicators(t *testing.T) {
 	t.Run("renders opencode working with label and filled icon", func(t *testing.T) {
 		result := renderAgentIndicators(map[string]session.ExternalAgent{
 			"opencode": {Status: session.StatusWorking},
-		})
+		}, session.StatusWorking, false)
 		if !strings.Contains(result, "[OC") {
 			t.Errorf("expected OC label, got %q", result)
 		}
@@ -937,7 +937,7 @@ func TestRenderAgentIndicators(t *testing.T) {
 	t.Run("renders opencode idle with hollow icon", func(t *testing.T) {
 		result := renderAgentIndicators(map[string]session.ExternalAgent{
 			"opencode": {Status: session.StatusIdle},
-		})
+		}, session.StatusWorking, false)
 		if !strings.Contains(result, "[OC") {
 			t.Errorf("expected OC label, got %q", result)
 		}
@@ -949,9 +949,27 @@ func TestRenderAgentIndicators(t *testing.T) {
 	t.Run("renders permission as filled icon", func(t *testing.T) {
 		result := renderAgentIndicators(map[string]session.ExternalAgent{
 			"opencode": {Status: session.StatusPermission},
-		})
+		}, session.StatusWorking, false)
 		if !strings.Contains(result, agentIndicatorFilled) {
 			t.Errorf("expected filled icon for permission, got %q", result)
+		}
+	})
+
+	t.Run("renders error as red filled icon", func(t *testing.T) {
+		result := renderAgentIndicators(map[string]session.ExternalAgent{
+			"opencode": {Status: session.StatusError},
+		}, session.StatusWorking, false)
+		if !strings.Contains(result, redStyle.Render(agentIndicatorFilled)) {
+			t.Errorf("expected red filled icon for error, got %q", result)
+		}
+	})
+
+	t.Run("renders done as green hollow icon", func(t *testing.T) {
+		result := renderAgentIndicators(map[string]session.ExternalAgent{
+			"opencode": {Status: session.StatusDone},
+		}, session.StatusWorking, false)
+		if !strings.Contains(result, greenStyle.Render(agentIndicatorHollow)) {
+			t.Errorf("expected green hollow icon for done, got %q", result)
 		}
 	})
 
@@ -960,7 +978,7 @@ func TestRenderAgentIndicators(t *testing.T) {
 			"zeta":     {Status: session.StatusIdle},
 			"alpha":    {Status: session.StatusWorking},
 			"opencode": {Status: session.StatusWorking},
-		})
+		}, session.StatusWorking, false)
 
 		alphaIndex := strings.Index(result, "[AL")
 		opencodeIndex := strings.Index(result, "[OC")
@@ -971,6 +989,19 @@ func TestRenderAgentIndicators(t *testing.T) {
 		}
 		if !(alphaIndex < opencodeIndex && opencodeIndex < zetaIndex) {
 			t.Errorf("expected sorted order AL -> OC -> ZE, got %q", result)
+		}
+	})
+
+	t.Run("includes CC indicator when composite differs", func(t *testing.T) {
+		result := renderAgentIndicators(map[string]session.ExternalAgent{
+			"opencode": {Status: session.StatusWorking},
+		}, session.StatusIdle, true)
+
+		if !strings.Contains(result, "[CC") {
+			t.Errorf("expected CC indicator, got %q", result)
+		}
+		if !strings.Contains(result, "[OC") {
+			t.Errorf("expected OC indicator, got %q", result)
 		}
 	})
 }
@@ -1009,6 +1040,96 @@ func TestRenderSessionWithExternalAgents(t *testing.T) {
 		}
 		if strings.Contains(result, "Agents") {
 			t.Error("session row should remain compact and not include agents detail section")
+		}
+	})
+
+	t.Run("cc drives composite keeps message unannotated", func(t *testing.T) {
+		s := session.Info{
+			TmuxSession: "test-session",
+			Status:      session.StatusWorking,
+			Message:     "working",
+			CWD:         "/tmp/test",
+			Timestamp:   time.Now().Unix(),
+			Agents: map[string]session.ExternalAgent{
+				"opencode": {Status: session.StatusIdle},
+			},
+		}
+
+		result := m.renderSession(s, false, 80)
+		if strings.Contains(result, "(opencode)") {
+			t.Errorf("did not expect source annotation when CC drives composite, got %q", result)
+		}
+		if !strings.Contains(result, "[OC") {
+			t.Error("expected OC indicator when external agents exist")
+		}
+	})
+
+	t.Run("external agent drives composite adds source and CC indicator", func(t *testing.T) {
+		s := session.Info{
+			TmuxSession: "test-session",
+			Status:      session.StatusIdle,
+			Message:     "working",
+			CWD:         "/tmp/test",
+			Timestamp:   time.Now().Unix(),
+			Agents: map[string]session.ExternalAgent{
+				"opencode": {Status: session.StatusWorking},
+			},
+		}
+
+		result := m.renderSession(s, false, 80)
+		if !strings.Contains(result, iconWorking) {
+			t.Errorf("expected working icon from composite status, got %q", result)
+		}
+		if !strings.Contains(result, "(opencode)") {
+			t.Errorf("expected source annotation for external composite source, got %q", result)
+		}
+		if !strings.Contains(result, "[CC") {
+			t.Errorf("expected CC indicator when composite differs from CC status, got %q", result)
+		}
+	})
+
+	t.Run("external permission drives composite", func(t *testing.T) {
+		s := session.Info{
+			TmuxSession: "test-session",
+			Status:      session.StatusWorking,
+			Message:     "permission needed",
+			CWD:         "/tmp/test",
+			Timestamp:   time.Now().Unix(),
+			Agents: map[string]session.ExternalAgent{
+				"opencode": {Status: session.StatusPermission},
+			},
+		}
+
+		result := m.renderSession(s, false, 80)
+		if !strings.Contains(result, iconPermission) {
+			t.Errorf("expected permission icon from composite status, got %q", result)
+		}
+		if !strings.Contains(result, "(opencode)") {
+			t.Errorf("expected source annotation for external permission source, got %q", result)
+		}
+		if !strings.Contains(result, "[CC") {
+			t.Errorf("expected CC indicator when composite differs from CC status, got %q", result)
+		}
+	})
+
+	t.Run("equal external status does not add source or CC indicator", func(t *testing.T) {
+		s := session.Info{
+			TmuxSession: "test-session",
+			Status:      session.StatusWorking,
+			Message:     "working",
+			CWD:         "/tmp/test",
+			Timestamp:   time.Now().Unix(),
+			Agents: map[string]session.ExternalAgent{
+				"opencode": {Status: session.StatusWorking},
+			},
+		}
+
+		result := m.renderSession(s, false, 80)
+		if strings.Contains(result, "(opencode)") {
+			t.Errorf("did not expect source annotation when CC ties for composite source, got %q", result)
+		}
+		if strings.Contains(result, "[CC") {
+			t.Errorf("did not expect CC indicator when composite matches CC status, got %q", result)
 		}
 	})
 
@@ -1079,6 +1200,12 @@ func TestRenderAgentDetail(t *testing.T) {
 		result := renderAgentDetail(s, 80)
 		if !strings.Contains(result, "Agents") {
 			t.Errorf("expected Agents header, got %q", result)
+		}
+		if !strings.Contains(result, "Composite") {
+			t.Errorf("expected composite status line, got %q", result)
+		}
+		if !strings.Contains(result, "(opencode)") {
+			t.Errorf("expected external source annotation in composite line, got %q", result)
 		}
 		if !strings.Contains(result, "CC") {
 			t.Errorf("expected CC line, got %q", result)
@@ -1159,6 +1286,121 @@ func TestRenderPreviewIncludesAgentDetailSection(t *testing.T) {
 		}
 		if !strings.Contains(result, "OC") {
 			t.Errorf("expected OC line in agent detail, got %q", result)
+		}
+	})
+}
+
+func TestRenderSessionCompositeStatusAcceptanceCriteria(t *testing.T) {
+	m := Model{width: 100, height: 24}
+
+	t.Run("ac1 composite icon highest priority", func(t *testing.T) {
+		tests := []struct {
+			name      string
+			session   session.Info
+			iconToken string
+		}{
+			{
+				name: "cc idle oc permission",
+				session: session.Info{
+					TmuxSession: "s1",
+					Status:      session.StatusIdle,
+					Message:     "permission",
+					CWD:         "/tmp/s1",
+					Timestamp:   time.Now().Unix(),
+					Agents: map[string]session.ExternalAgent{
+						"opencode": {Status: session.StatusPermission},
+					},
+				},
+				iconToken: iconPermission,
+			},
+			{
+				name: "cc working oc waiting",
+				session: session.Info{
+					TmuxSession: "s2",
+					Status:      session.StatusWorking,
+					Message:     "waiting",
+					CWD:         "/tmp/s2",
+					Timestamp:   time.Now().Unix(),
+					Agents: map[string]session.ExternalAgent{
+						"opencode": {Status: session.StatusWaiting},
+					},
+				},
+				iconToken: iconWaiting,
+			},
+			{
+				name: "cc idle oc working",
+				session: session.Info{
+					TmuxSession: "s3",
+					Status:      session.StatusIdle,
+					Message:     "working",
+					CWD:         "/tmp/s3",
+					Timestamp:   time.Now().Unix(),
+					Agents: map[string]session.ExternalAgent{
+						"opencode": {Status: session.StatusWorking},
+					},
+				},
+				iconToken: iconWorking,
+			},
+			{
+				name: "cc error oc permission",
+				session: session.Info{
+					TmuxSession: "s4",
+					Status:      session.StatusError,
+					Message:     "permission",
+					CWD:         "/tmp/s4",
+					Timestamp:   time.Now().Unix(),
+					Agents: map[string]session.ExternalAgent{
+						"opencode": {Status: session.StatusPermission},
+					},
+				},
+				iconToken: iconPermission,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				result := m.renderSession(tt.session, false, 100)
+				if !strings.Contains(result, tt.iconToken) {
+					t.Fatalf("expected icon token %q in render output, got %q", tt.iconToken, result)
+				}
+			})
+		}
+	})
+
+	t.Run("ac5 single-agent sessions stay unannotated and without agent indicators", func(t *testing.T) {
+		statuses := []string{
+			session.StatusWorking,
+			session.StatusIdle,
+			session.StatusPermission,
+			session.StatusWaiting,
+			session.StatusStopped,
+			session.StatusError,
+			session.StatusDone,
+		}
+
+		for _, status := range statuses {
+			base := session.Info{
+				TmuxSession: "single",
+				Status:      status,
+				Message:     status,
+				CWD:         "/tmp/single",
+				Timestamp:   time.Now().Unix(),
+			}
+
+			withEmptyAgents := base
+			withEmptyAgents.Agents = map[string]session.ExternalAgent{}
+
+			result := m.renderSession(base, false, 100)
+			resultWithEmptyAgents := m.renderSession(withEmptyAgents, false, 100)
+			if result != resultWithEmptyAgents {
+				t.Fatalf("status %q should render identically for nil vs empty agents\nwithout agents:\n%q\nwith empty agents:\n%q", status, result, resultWithEmptyAgents)
+			}
+			if strings.Contains(result, "(opencode)") {
+				t.Fatalf("status %q should not include external annotation: %q", status, result)
+			}
+			if strings.Contains(result, "[CC") || strings.Contains(result, "[OC") {
+				t.Fatalf("status %q should not include agent indicators: %q", status, result)
+			}
 		}
 	})
 }

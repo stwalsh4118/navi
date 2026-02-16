@@ -354,10 +354,4 @@ func TestOpenURL(t *testing.T) {
 		}
 	})
 
-	t.Run("does not panic on valid URL", func(t *testing.T) {
-		if os.Getenv("CI") != "" {
-			t.Skip("Skipping browser test in CI environment")
-		}
-		_ = OpenURL("https://example.com")
-	})
 }

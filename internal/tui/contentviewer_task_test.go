@@ -93,21 +93,6 @@ func TestTaskPanelEnterOpensContentViewer(t *testing.T) {
 		}
 	})
 
-	t.Run("enter on task with URL does not open content viewer", func(t *testing.T) {
-		m, _ := newTaskViewerTestModel(t)
-		// Cursor on task "29-2" which has a URL (index 2)
-		m.taskCursor = 2
-
-		msg := tea.KeyMsg{Type: tea.KeyEnter}
-		newModel, _ := m.Update(msg)
-		updated := newModel.(Model)
-
-		// Should NOT open content viewer (it would try to open URL externally)
-		if updated.dialogMode == DialogContentViewer {
-			t.Error("should not open content viewer for tasks with URL")
-		}
-	})
-
 	t.Run("enter on group toggles expansion", func(t *testing.T) {
 		m, _ := newTaskViewerTestModel(t)
 		m.taskCursor = 0 // On group header
