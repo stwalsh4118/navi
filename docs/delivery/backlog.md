@@ -50,6 +50,7 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 42 | User | As a user, I want configurable audio notifications with custom sound files and TTS session name announcements when session statuses change so that I have audio awareness without watching the TUI | Done | [View Details](./42/prd.md) |
 | 43 | User | As a user, I want tmux sessions embedded inside the Navi UI with a status bar so that polling, notifications, and audio alerts continue working while I interact with a session | Proposed | [View Details](./43/prd.md) |
 | 44 | User | As a user, I want audio notifications to continue and session status visible in the tmux status bar while attached to a session so that I stay aware without detaching | Done | [View Details](./44/prd.md) |
+| 45 | User | As a user, I want audio notifications when external agent status changes (OpenCode, etc.) so that I have the same audio awareness for all agents, not just the primary Claude Code session | Proposed | [View Details](./45/prd.md) |
 
 ## History Log
 
@@ -150,3 +151,4 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 20260215-192155 | 41 | Updated | Rewritten: Multi-Agent TUI Display updated from Codex to OpenCode. Single shared status file with agents map instead of separate files | AI_Agent |
 | 2026-02-15 19:24:55 | 40 | Status Change | Proposed → Agreed - User approved for task breakdown | User |
 | 2026-02-16 07:44:29 | 41 | Status Change | Proposed → Agreed - User approved for task breakdown | User |
+| 20260216-085320 | 45 | Created | PBI created from feature request: Audio notifications for external agent (OpenCode) status changes | AI_Agent |
