@@ -58,6 +58,7 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 50 | Developer | As a developer, I want the PM to detect patterns, generate proactive suggestions, and show attention items in the session list footer so that important items are visible without switching views | Proposed | [View Details](./50/prd.md) |
 | 51 | Developer | As a developer, I want to ask the PM questions from the TUI so that I can interrogate its knowledge about my projects conversationally | Proposed | [View Details](./51/prd.md) |
 | 52 | Developer | As a developer, I want to register projects in config for tracking without active sessions so that the PM has full portfolio awareness | Proposed | [View Details](./52/prd.md) |
+| 53 | User | As a user, I want the session status icon and message to reflect the aggregate state of all agents so that external agents like OpenCode are first-class citizens in the display | Proposed | [View Details](./53/prd.md) |
 
 ## History Log
 
@@ -168,3 +169,4 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 20260216-100800 | 50 | Created | Proactive PM and Session List Integration (Orchestrator PRD Phase 3) | AI_Agent |
 | 20260216-100800 | 51 | Created | PM Conversational Interaction (Orchestrator PRD Phase 3) | AI_Agent |
 | 20260216-100800 | 52 | Created | All-Project Awareness (Orchestrator PRD Phase 4) | AI_Agent |
+| 20260216-120418 | 53 | Created | PBI created from feature request: Composite session status — unified multi-agent display, external agents as first-class citizens | AI_Agent |
