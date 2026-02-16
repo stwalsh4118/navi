@@ -49,4 +49,4 @@ N/A — backend/infrastructure PBI. Events and snapshots are consumed by PBI-47 
 
 ## Related Tasks
 
-_Tasks will be created when this PBI moves to Agreed via `/plan-pbi 46`._
+[View Tasks](./tasks.md)
