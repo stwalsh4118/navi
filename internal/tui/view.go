@@ -707,7 +707,7 @@ func (m Model) renderPreview(width, height int) string {
 	if hasSelectedSession {
 		agentDetail = renderAgentDetail(selectedSession, width-4)
 		if agentDetail != "" {
-			agentDetailLines = len(strings.Split(agentDetail, "\n"))
+			agentDetailLines = len(strings.Split(agentDetail, "\n")) + 1
 			b.WriteString(agentDetail)
 			b.WriteString("\n")
 		}
