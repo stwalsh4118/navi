@@ -56,4 +56,12 @@ Behavior:
 func SortSessions(sessions []Info)
 func AggregateMetrics(sessions []Info) *metrics.Metrics
 func HasPriorityTeammate(s Info) bool
+func HasPriorityExternalAgent(s Info) bool
 ```
+
+Sorting notes:
+- Priority sessions sort first when any of these are true:
+  - session status is `waiting` or `permission`
+  - team includes an agent in `waiting` or `permission`
+  - external agents include `waiting` or `permission`
+- Sessions with external agents in active states (`working`, `waiting`, `permission`) are treated as active in sorting and do not sort as fully done.

@@ -8,6 +8,12 @@ import (
 	"github.com/stwalsh4118/navi/internal/metrics"
 )
 
+const (
+	sortTierPriority = 0
+	sortTierActive   = 1
+	sortTierDefault  = 2
+)
+
 // Status constants
 const (
 	StatusWaiting    = "waiting"
@@ -83,15 +89,51 @@ func HasPriorityTeammate(s Info) bool {
 	return false
 }
 
+// HasPriorityExternalAgent returns true if any external agent in the session
+// has a priority status (waiting or permission).
+func HasPriorityExternalAgent(s Info) bool {
+	if len(s.Agents) == 0 {
+		return false
+	}
+	for _, agent := range s.Agents {
+		if agent.Status == StatusWaiting || agent.Status == StatusPermission {
+			return true
+		}
+	}
+	return false
+}
+
+func hasActiveExternalAgent(s Info) bool {
+	if len(s.Agents) == 0 {
+		return false
+	}
+	for _, agent := range s.Agents {
+		if agent.Status == StatusWorking || agent.Status == StatusWaiting || agent.Status == StatusPermission {
+			return true
+		}
+	}
+	return false
+}
+
+func sessionSortTier(s Info) int {
+	if s.Status == StatusWaiting || s.Status == StatusPermission || HasPriorityTeammate(s) || HasPriorityExternalAgent(s) {
+		return sortTierPriority
+	}
+	if hasActiveExternalAgent(s) {
+		return sortTierActive
+	}
+	return sortTierDefault
+}
+
 // SortSessions sorts sessions with priority statuses (waiting, permission) first,
 // then by timestamp descending (most recent first).
 func SortSessions(sessions []Info) {
 	sort.Slice(sessions, func(i, j int) bool {
-		iPriority := sessions[i].Status == StatusWaiting || sessions[i].Status == StatusPermission || HasPriorityTeammate(sessions[i])
-		jPriority := sessions[j].Status == StatusWaiting || sessions[j].Status == StatusPermission || HasPriorityTeammate(sessions[j])
+		iTier := sessionSortTier(sessions[i])
+		jTier := sessionSortTier(sessions[j])
 
-		if iPriority != jPriority {
-			return iPriority
+		if iTier != jTier {
+			return iTier < jTier
 		}
 
 		return sessions[i].Timestamp > sessions[j].Timestamp

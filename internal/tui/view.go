@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -21,6 +22,123 @@ const (
 	unselectedMarker = "  "
 	rowIndent        = "      " // 6 spaces for indented lines
 )
+
+var agentLabelMap = map[string]string{
+	"opencode": "OC",
+}
+
+const (
+	agentIndicatorFilled = "●"
+	agentIndicatorHollow = "○"
+)
+
+func agentShortLabel(agentType string) string {
+	if label, ok := agentLabelMap[agentType]; ok {
+		return label
+	}
+	if agentType == "" {
+		return "??"
+	}
+	upper := strings.ToUpper(agentType)
+	runes := []rune(upper)
+	if len(runes) <= 2 {
+		return upper
+	}
+	return string(runes[:2])
+}
+
+func renderAgentIndicators(agents map[string]session.ExternalAgent) string {
+	if len(agents) == 0 {
+		return ""
+	}
+
+	keys := make([]string, 0, len(agents))
+	for key := range agents {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		agent := agents[key]
+		label := agentShortLabel(key)
+
+		icon := agentIndicatorHollow
+		styledIcon := grayStyle.Render(icon)
+		switch agent.Status {
+		case session.StatusPermission:
+			icon = agentIndicatorFilled
+			styledIcon = magentaStyle.Render(icon)
+		case session.StatusWorking:
+			icon = agentIndicatorFilled
+			styledIcon = cyanStyle.Render(icon)
+		case session.StatusWaiting:
+			icon = agentIndicatorFilled
+			styledIcon = yellowStyle.Render(icon)
+		case session.StatusIdle, session.StatusStopped:
+			styledIcon = grayStyle.Render(icon)
+		default:
+			styledIcon = dimStyle.Render(icon)
+		}
+
+		parts = append(parts, fmt.Sprintf("[%s %s]", label, styledIcon))
+	}
+
+	return strings.Join(parts, " ")
+}
+
+func formatRelativeTimestamp(timestamp int64) string {
+	if timestamp <= 0 {
+		return "unknown"
+	}
+	return formatAge(timestamp)
+}
+
+func renderAgentDetail(s session.Info, width int) string {
+	if len(s.Agents) == 0 {
+		return ""
+	}
+
+	contentWidth := width - len(rowIndent)
+	if contentWidth < 20 {
+		contentWidth = 20
+	}
+
+	var lines []string
+	lines = append(lines, rowIndent+boldStyle.Render("Agents"))
+
+	ccLine := fmt.Sprintf("CC %s %s", StatusIcon(s.Status), s.Status)
+	if s.Message != "" {
+		maxMessageLen := contentWidth - 24
+		if maxMessageLen < 8 {
+			maxMessageLen = 8
+		}
+		ccLine = ccLine + " - " + truncate(s.Message, maxMessageLen)
+	}
+	lines = append(lines, rowIndent+ccLine)
+
+	keys := make([]string, 0, len(s.Agents))
+	for key := range s.Agents {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	for _, key := range keys {
+		agent := s.Agents[key]
+		label := agentShortLabel(key)
+		agentLine := fmt.Sprintf("%s %s %s %s", label, StatusIcon(agent.Status), agent.Status, formatRelativeTimestamp(agent.Timestamp))
+		lines = append(lines, rowIndent+agentLine)
+	}
+
+	for i := range lines {
+		if i == 0 {
+			continue
+		}
+		lines[i] = dimStyle.Render(lines[i])
+	}
+
+	return strings.Join(lines, "\n")
+}
 
 // View implements tea.Model.
 func (m Model) View() string {
@@ -186,10 +304,15 @@ func (m Model) renderSession(s session.Info, selected bool, width int) string {
 		}
 	}
 
+	agentIndicators := renderAgentIndicators(s.Agents)
+	if agentIndicators != "" {
+		agentIndicators = " " + agentIndicators
+	}
+
 	age := formatAge(s.Timestamp)
 
 	// Calculate padding for right-aligned age
-	firstLine := fmt.Sprintf("%s%s  %s%s%s", marker, icon, name, remoteLabel, teamBadge)
+	firstLine := fmt.Sprintf("%s%s  %s%s%s%s", marker, icon, name, remoteLabel, teamBadge, agentIndicators)
 	padding := width - lipgloss.Width(firstLine) - len(age) - 2
 	if padding < 1 {
 		padding = 1
@@ -565,8 +688,12 @@ func (m Model) renderPreview(width, height int) string {
 	// Get session name for header
 	filteredSessions := m.getFilteredSessions()
 	sessionName := ""
+	var selectedSession session.Info
+	hasSelectedSession := false
 	if len(filteredSessions) > 0 && m.cursor < len(filteredSessions) {
-		sessionName = filteredSessions[m.cursor].TmuxSession
+		selectedSession = filteredSessions[m.cursor]
+		hasSelectedSession = true
+		sessionName = selectedSession.TmuxSession
 	}
 
 	// Build header with session name
@@ -574,6 +701,17 @@ func (m Model) renderPreview(width, height int) string {
 		b.WriteString(previewHeaderStyle.Render("─ " + sessionName + " "))
 	}
 	b.WriteString("\n")
+
+	agentDetail := ""
+	agentDetailLines := 0
+	if hasSelectedSession {
+		agentDetail = renderAgentDetail(selectedSession, width-4)
+		if agentDetail != "" {
+			agentDetailLines = len(strings.Split(agentDetail, "\n"))
+			b.WriteString(agentDetail)
+			b.WriteString("\n")
+		}
+	}
 
 	// Content area
 	contentWidth := width - 4 // Account for box padding and borders
@@ -599,8 +737,8 @@ func (m Model) renderPreview(width, height int) string {
 			content = strings.Join(lines, "\n")
 		}
 
-		// Calculate max content lines: total height - borders(2) - header(1)
-		maxLines := height - 3
+		// Calculate max content lines: total height - borders(2) - header(1) - optional agent detail lines
+		maxLines := height - 3 - agentDetailLines
 		if maxLines < 1 {
 			maxLines = 1
 		}
