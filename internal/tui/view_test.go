@@ -906,3 +906,259 @@ func TestRenderTeamAgents(t *testing.T) {
 		}
 	})
 }
+
+func TestRenderAgentIndicators(t *testing.T) {
+	t.Run("returns empty string for nil map", func(t *testing.T) {
+		result := renderAgentIndicators(nil)
+		if result != "" {
+			t.Errorf("expected empty string, got %q", result)
+		}
+	})
+
+	t.Run("returns empty string for empty map", func(t *testing.T) {
+		result := renderAgentIndicators(map[string]session.ExternalAgent{})
+		if result != "" {
+			t.Errorf("expected empty string, got %q", result)
+		}
+	})
+
+	t.Run("renders opencode working with label and filled icon", func(t *testing.T) {
+		result := renderAgentIndicators(map[string]session.ExternalAgent{
+			"opencode": {Status: session.StatusWorking},
+		})
+		if !strings.Contains(result, "[OC") {
+			t.Errorf("expected OC label, got %q", result)
+		}
+		if !strings.Contains(result, agentIndicatorFilled) {
+			t.Errorf("expected filled icon, got %q", result)
+		}
+	})
+
+	t.Run("renders opencode idle with hollow icon", func(t *testing.T) {
+		result := renderAgentIndicators(map[string]session.ExternalAgent{
+			"opencode": {Status: session.StatusIdle},
+		})
+		if !strings.Contains(result, "[OC") {
+			t.Errorf("expected OC label, got %q", result)
+		}
+		if !strings.Contains(result, agentIndicatorHollow) {
+			t.Errorf("expected hollow icon, got %q", result)
+		}
+	})
+
+	t.Run("renders permission as filled icon", func(t *testing.T) {
+		result := renderAgentIndicators(map[string]session.ExternalAgent{
+			"opencode": {Status: session.StatusPermission},
+		})
+		if !strings.Contains(result, agentIndicatorFilled) {
+			t.Errorf("expected filled icon for permission, got %q", result)
+		}
+	})
+
+	t.Run("renders multiple agents sorted by key", func(t *testing.T) {
+		result := renderAgentIndicators(map[string]session.ExternalAgent{
+			"zeta":     {Status: session.StatusIdle},
+			"alpha":    {Status: session.StatusWorking},
+			"opencode": {Status: session.StatusWorking},
+		})
+
+		alphaIndex := strings.Index(result, "[AL")
+		opencodeIndex := strings.Index(result, "[OC")
+		zetaIndex := strings.Index(result, "[ZE")
+
+		if alphaIndex == -1 || opencodeIndex == -1 || zetaIndex == -1 {
+			t.Fatalf("expected AL, OC, and ZE indicators, got %q", result)
+		}
+		if !(alphaIndex < opencodeIndex && opencodeIndex < zetaIndex) {
+			t.Errorf("expected sorted order AL -> OC -> ZE, got %q", result)
+		}
+	})
+}
+
+func TestRenderSessionWithExternalAgents(t *testing.T) {
+	m := Model{width: 80, height: 24}
+
+	t.Run("session without agents has no OC indicator", func(t *testing.T) {
+		s := session.Info{
+			TmuxSession: "test-session",
+			Status:      "working",
+			CWD:         "/tmp/test",
+			Timestamp:   time.Now().Unix(),
+		}
+
+		result := m.renderSession(s, false, 80)
+		if strings.Contains(result, "[OC") {
+			t.Error("session without agents should not show OC indicator")
+		}
+	})
+
+	t.Run("session with external agents shows indicator", func(t *testing.T) {
+		s := session.Info{
+			TmuxSession: "test-session",
+			Status:      "working",
+			CWD:         "/tmp/test",
+			Timestamp:   time.Now().Unix(),
+			Agents: map[string]session.ExternalAgent{
+				"opencode": {Status: session.StatusWorking},
+			},
+		}
+
+		result := m.renderSession(s, false, 80)
+		if !strings.Contains(result, "[OC") {
+			t.Error("session with agents should show OC indicator")
+		}
+		if strings.Contains(result, "Agents") {
+			t.Error("session row should remain compact and not include agents detail section")
+		}
+	})
+
+	t.Run("session with team and external agents shows both", func(t *testing.T) {
+		s := session.Info{
+			TmuxSession: "test-session",
+			Status:      "working",
+			CWD:         "/tmp/test",
+			Timestamp:   time.Now().Unix(),
+			Team: &session.TeamInfo{
+				Name: "my-project",
+				Agents: []session.AgentInfo{
+					{Name: "researcher", Status: "working", Timestamp: time.Now().Unix()},
+				},
+			},
+			Agents: map[string]session.ExternalAgent{
+				"opencode": {Status: session.StatusPermission},
+			},
+		}
+
+		result := m.renderSession(s, false, 80)
+		if !strings.Contains(result, "[1 agents]") {
+			t.Error("session with team should show team badge")
+		}
+		if !strings.Contains(result, "[OC") {
+			t.Error("session with external agents should show OC indicator")
+		}
+	})
+}
+
+func TestRenderAgentDetail(t *testing.T) {
+	t.Run("returns empty string for nil agents", func(t *testing.T) {
+		s := session.Info{
+			Status: session.StatusWorking,
+			Agents: nil,
+		}
+		result := renderAgentDetail(s, 80)
+		if result != "" {
+			t.Errorf("expected empty detail for nil agents, got %q", result)
+		}
+	})
+
+	t.Run("returns empty string for empty agents map", func(t *testing.T) {
+		s := session.Info{
+			Status: session.StatusWorking,
+			Agents: map[string]session.ExternalAgent{},
+		}
+		result := renderAgentDetail(s, 80)
+		if result != "" {
+			t.Errorf("expected empty detail for empty map, got %q", result)
+		}
+	})
+
+	t.Run("includes agents section with CC and OC lines", func(t *testing.T) {
+		now := time.Now().Unix()
+		s := session.Info{
+			Status:    session.StatusWorking,
+			Message:   "running task",
+			Timestamp: now,
+			Agents: map[string]session.ExternalAgent{
+				"opencode": {
+					Status:    session.StatusPermission,
+					Timestamp: now - 120,
+				},
+			},
+		}
+
+		result := renderAgentDetail(s, 80)
+		if !strings.Contains(result, "Agents") {
+			t.Errorf("expected Agents header, got %q", result)
+		}
+		if !strings.Contains(result, "CC") {
+			t.Errorf("expected CC line, got %q", result)
+		}
+		if !strings.Contains(result, "OC") {
+			t.Errorf("expected OC line, got %q", result)
+		}
+		if !strings.Contains(result, "permission") {
+			t.Errorf("expected external status text, got %q", result)
+		}
+		if !strings.Contains(result, "ago") {
+			t.Errorf("expected relative timestamp, got %q", result)
+		}
+	})
+}
+
+func TestRenderPreviewIncludesAgentDetailSection(t *testing.T) {
+	t.Run("single-agent session does not include agents section", func(t *testing.T) {
+		m := Model{
+			width:  100,
+			height: 24,
+			sessions: []session.Info{
+				{TmuxSession: "single-agent", Status: session.StatusWorking, CWD: "/tmp/single", Timestamp: time.Now().Unix()},
+			},
+			cursor:         0,
+			previewVisible: true,
+			previewContent: "preview",
+		}
+		result := m.renderPreview(50, 20)
+		if strings.Contains(result, "Agents") {
+			t.Errorf("did not expect Agents section, got %q", result)
+		}
+	})
+
+	t.Run("session with empty agents map does not include agents section", func(t *testing.T) {
+		m := Model{
+			width:  100,
+			height: 24,
+			sessions: []session.Info{
+				{TmuxSession: "empty-agents", Status: session.StatusWorking, CWD: "/tmp/empty", Timestamp: time.Now().Unix(), Agents: map[string]session.ExternalAgent{}},
+			},
+			cursor:         0,
+			previewVisible: true,
+			previewContent: "preview",
+		}
+		result := m.renderPreview(50, 20)
+		if strings.Contains(result, "Agents") {
+			t.Errorf("did not expect Agents section for empty map, got %q", result)
+		}
+	})
+
+	t.Run("multi-agent session includes agents section", func(t *testing.T) {
+		m := Model{
+			width:  100,
+			height: 24,
+			sessions: []session.Info{
+				{
+					TmuxSession: "multi-agent",
+					Status:      session.StatusWorking,
+					Message:     "coordinating",
+					CWD:         "/tmp/multi",
+					Timestamp:   time.Now().Unix(),
+					Agents: map[string]session.ExternalAgent{
+						"opencode": {Status: session.StatusIdle, Timestamp: time.Now().Unix() - 30},
+					},
+				},
+			},
+			cursor:         0,
+			previewVisible: true,
+			previewContent: "preview",
+		}
+		result := m.renderPreview(50, 20)
+		if !strings.Contains(result, "Agents") {
+			t.Errorf("expected Agents section, got %q", result)
+		}
+		if !strings.Contains(result, "CC") {
+			t.Errorf("expected CC line in agent detail, got %q", result)
+		}
+		if !strings.Contains(result, "OC") {
+			t.Errorf("expected OC line in agent detail, got %q", result)
+		}
+	})
+}

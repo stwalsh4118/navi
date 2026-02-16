@@ -182,6 +182,69 @@ func TestHasPriorityTeammate(t *testing.T) {
 	})
 }
 
+func TestHasPriorityExternalAgent(t *testing.T) {
+	t.Run("returns false when Agents is nil", func(t *testing.T) {
+		s := Info{Agents: nil}
+		if HasPriorityExternalAgent(s) {
+			t.Error("expected false for nil Agents")
+		}
+	})
+
+	t.Run("returns false when Agents is empty", func(t *testing.T) {
+		s := Info{Agents: map[string]ExternalAgent{}}
+		if HasPriorityExternalAgent(s) {
+			t.Error("expected false for empty Agents")
+		}
+	})
+
+	t.Run("returns false when all external agents are idle", func(t *testing.T) {
+		s := Info{Agents: map[string]ExternalAgent{
+			"opencode": {Status: StatusIdle},
+			"other":    {Status: StatusStopped},
+		}}
+		if HasPriorityExternalAgent(s) {
+			t.Error("expected false when no priority external agents")
+		}
+	})
+
+	t.Run("returns false when external agent is working", func(t *testing.T) {
+		s := Info{Agents: map[string]ExternalAgent{
+			"opencode": {Status: StatusWorking},
+		}}
+		if HasPriorityExternalAgent(s) {
+			t.Error("expected false for working external agent")
+		}
+	})
+
+	t.Run("returns true when external agent has permission status", func(t *testing.T) {
+		s := Info{Agents: map[string]ExternalAgent{
+			"opencode": {Status: StatusPermission},
+		}}
+		if !HasPriorityExternalAgent(s) {
+			t.Error("expected true for permission external agent")
+		}
+	})
+
+	t.Run("returns true when external agent has waiting status", func(t *testing.T) {
+		s := Info{Agents: map[string]ExternalAgent{
+			"opencode": {Status: StatusWaiting},
+		}}
+		if !HasPriorityExternalAgent(s) {
+			t.Error("expected true for waiting external agent")
+		}
+	})
+
+	t.Run("returns true when any external agent is priority", func(t *testing.T) {
+		s := Info{Agents: map[string]ExternalAgent{
+			"opencode": {Status: StatusIdle},
+			"other":    {Status: StatusPermission},
+		}}
+		if !HasPriorityExternalAgent(s) {
+			t.Error("expected true when one external agent has priority status")
+		}
+	})
+}
+
 func TestSortSessionsWithTeamPriority(t *testing.T) {
 	t.Run("session with teammate permission sorts above plain working", func(t *testing.T) {
 		sessions := []Info{
@@ -225,6 +288,99 @@ func TestSortSessionsWithTeamPriority(t *testing.T) {
 		}
 		if sessions[2].TmuxSession != "c" {
 			t.Errorf("expected oldest working last, got %s", sessions[2].TmuxSession)
+		}
+	})
+}
+
+func TestSortSessionsWithExternalAgentPriority(t *testing.T) {
+	t.Run("session with external permission sorts above plain working", func(t *testing.T) {
+		sessions := []Info{
+			{TmuxSession: "plain-working", Status: StatusWorking, Timestamp: 100},
+			{TmuxSession: "external-permission", Status: StatusWorking, Timestamp: 50, Agents: map[string]ExternalAgent{
+				"opencode": {Status: StatusPermission},
+			}},
+		}
+		SortSessions(sessions)
+		if sessions[0].TmuxSession != "external-permission" {
+			t.Errorf("expected external-permission first, got %s", sessions[0].TmuxSession)
+		}
+	})
+
+	t.Run("session with external waiting sorts with own waiting", func(t *testing.T) {
+		sessions := []Info{
+			{TmuxSession: "plain-working", Status: StatusWorking, Timestamp: 200},
+			{TmuxSession: "own-waiting", Status: StatusWaiting, Timestamp: 100},
+			{TmuxSession: "external-waiting", Status: StatusWorking, Timestamp: 50, Agents: map[string]ExternalAgent{
+				"opencode": {Status: StatusWaiting},
+			}},
+		}
+		SortSessions(sessions)
+		if sessions[2].TmuxSession != "plain-working" {
+			t.Errorf("expected plain-working last, got %s", sessions[2].TmuxSession)
+		}
+	})
+
+	t.Run("sessions without external agents sort as before", func(t *testing.T) {
+		sessions := []Info{
+			{TmuxSession: "a", Status: StatusWorking, Timestamp: 100},
+			{TmuxSession: "b", Status: StatusWaiting, Timestamp: 50},
+			{TmuxSession: "c", Status: StatusWorking, Timestamp: 25},
+		}
+		SortSessions(sessions)
+		if sessions[0].TmuxSession != "b" {
+			t.Errorf("expected waiting first, got %s", sessions[0].TmuxSession)
+		}
+		if sessions[2].TmuxSession != "c" {
+			t.Errorf("expected oldest working last, got %s", sessions[2].TmuxSession)
+		}
+	})
+
+	t.Run("combined team and external priority sessions sort before plain working", func(t *testing.T) {
+		sessions := []Info{
+			{TmuxSession: "plain-working", Status: StatusWorking, Timestamp: 300},
+			{TmuxSession: "team-priority", Status: StatusWorking, Timestamp: 200, Team: &TeamInfo{
+				Name:   "proj",
+				Agents: []AgentInfo{{Name: "a", Status: StatusPermission}},
+			}},
+			{TmuxSession: "external-priority", Status: StatusWorking, Timestamp: 100, Agents: map[string]ExternalAgent{
+				"opencode": {Status: StatusWaiting},
+			}},
+		}
+		SortSessions(sessions)
+		if sessions[2].TmuxSession != "plain-working" {
+			t.Errorf("expected plain-working last, got %s", sessions[2].TmuxSession)
+		}
+	})
+
+	t.Run("session with external working does not sort as done", func(t *testing.T) {
+		sessions := []Info{
+			{TmuxSession: "done-with-external-working", Status: "done", Timestamp: 50, Agents: map[string]ExternalAgent{
+				"opencode": {Status: StatusWorking},
+			}},
+			{TmuxSession: "done-idle", Status: "done", Timestamp: 100},
+		}
+		SortSessions(sessions)
+		if sessions[0].TmuxSession != "done-with-external-working" {
+			t.Errorf("expected done-with-external-working first, got %s", sessions[0].TmuxSession)
+		}
+	})
+
+	t.Run("waiting remains above external working regardless of recency", func(t *testing.T) {
+		sessions := []Info{
+			{TmuxSession: "external-working", Status: "done", Timestamp: 300, Agents: map[string]ExternalAgent{
+				"opencode": {Status: StatusWorking},
+			}},
+			{TmuxSession: "waiting", Status: StatusWaiting, Timestamp: 100},
+			{TmuxSession: "plain-done", Status: "done", Timestamp: 200},
+		}
+
+		SortSessions(sessions)
+
+		if sessions[0].TmuxSession != "waiting" {
+			t.Errorf("expected waiting first, got %s", sessions[0].TmuxSession)
+		}
+		if sessions[1].TmuxSession != "external-working" {
+			t.Errorf("expected external-working second, got %s", sessions[1].TmuxSession)
 		}
 	})
 }
