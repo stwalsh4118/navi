@@ -63,4 +63,4 @@ None.
 
 ## Related Tasks
 
-_Tasks will be created when this PBI is planned via `/plan-pbi 45`._
+[View Tasks](./tasks.md)
