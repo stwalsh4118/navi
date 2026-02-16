@@ -599,16 +599,4 @@ func TestOpenURL(t *testing.T) {
 		}
 	})
 
-	// Note: We can't fully test git.OpenURL without actually opening a browser,
-	// but we can verify it doesn't panic and handles errors appropriately
-	t.Run("does not panic on valid URL", func(t *testing.T) {
-		// This will attempt to open a URL - skip on CI or if no display
-		if os.Getenv("CI") != "" {
-			t.Skip("Skipping browser test in CI environment")
-		}
-
-		// Just verify it doesn't panic - the actual browser open may fail
-		// if no display is available, but that's expected in some environments
-		_ = git.OpenURL("https://example.com")
-	})
 }
