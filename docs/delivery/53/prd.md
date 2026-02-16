@@ -79,4 +79,4 @@ None — message format decided: `"<status> (agenttype)"`.
 
 ## Related Tasks
 
-_Tasks will be created when this PBI moves to Agreed via `/plan-pbi 53`._
+[View Tasks](./tasks.md)
