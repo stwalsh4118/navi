@@ -5,6 +5,8 @@ import path from "node:path"
 
 const STATUS_DIR = path.join(homedir(), ".claude-sessions")
 const OPENCODE_AGENT_KEY = "opencode"
+const SESSION_NAME_REFRESH_INTERVAL_MS = 30000
+const DUPLICATE_STATUS_SUPPRESS_WINDOW_MS = 1000
 
 function nowUnixSeconds() {
   return Math.floor(Date.now() / 1000)
@@ -46,7 +48,7 @@ async function readStatusFile(filePath) {
 
 async function updateStatus(sessionName, status) {
   if (!sessionName) {
-    return
+    return false
   }
 
   await mkdir(STATUS_DIR, { recursive: true })
@@ -77,21 +79,53 @@ async function updateStatus(sessionName, status) {
   } catch {
     await writeFile(statusPath, `${JSON.stringify(updated, null, 2)}\n`, "utf8")
   }
+
+  return true
 }
 
 export const NaviPlugin = async ({ $ }) => {
   let cachedSessionName = await resolveSessionName($)
+  let lastSessionResolveAt = Date.now()
   let writeQueue = Promise.resolve()
+  let lastWrittenStatus = ""
+  let lastStatusWriteAt = 0
+
+  const refreshSessionNameIfNeeded = async () => {
+    const now = Date.now()
+    const shouldRefresh =
+      !cachedSessionName || now-lastSessionResolveAt >= SESSION_NAME_REFRESH_INTERVAL_MS
+
+    if (!shouldRefresh) {
+      return
+    }
+
+    const runtimeSessionName = await resolveSessionName($)
+    if (runtimeSessionName) {
+      cachedSessionName = runtimeSessionName
+    }
+    lastSessionResolveAt = now
+  }
 
   const writeStatus = async (status) => {
     writeQueue = writeQueue
       .catch(() => undefined)
       .then(async () => {
-        const runtimeSessionName = await resolveSessionName($)
-        if (runtimeSessionName) {
-          cachedSessionName = runtimeSessionName
+        await refreshSessionNameIfNeeded()
+
+        const now = Date.now()
+        const isDuplicateStatus =
+          status === lastWrittenStatus &&
+          now-lastStatusWriteAt < DUPLICATE_STATUS_SUPPRESS_WINDOW_MS
+
+        if (isDuplicateStatus) {
+          return
         }
-        await updateStatus(cachedSessionName, status)
+
+        const didWrite = await updateStatus(cachedSessionName, status)
+        if (didWrite) {
+          lastWrittenStatus = status
+          lastStatusWriteAt = now
+        }
       })
     await writeQueue
   }
