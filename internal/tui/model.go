@@ -65,6 +65,7 @@ type Model struct {
 	filterMode          session.FilterMode // Current session filter mode
 	audioNotifier       *audio.Notifier    // Audio notification manager
 	lastSessionStates   map[string]string  // Last known status by session name
+	lastAgentStates     map[string]map[string]string
 	attachMonitor       *monitor.AttachMonitor
 	attachMonitorCancel context.CancelFunc
 	audioNotifyFn       func(string, string) // Test hook; defaults to notifier.Notify
@@ -1875,7 +1876,7 @@ func (m *Model) startAttachMonitor() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	mon := monitor.New(m.audioNotifier, pathutil.ExpandPath(session.StatusDir), session.PollInterval)
-	mon.Start(ctx, m.lastSessionStates)
+	mon.Start(ctx, m.lastSessionStates, m.lastAgentStates)
 
 	m.attachMonitor = mon
 	m.attachMonitorCancel = cancel
@@ -1887,6 +1888,7 @@ func (m *Model) stopAttachMonitor() {
 	}
 	if m.attachMonitor != nil {
 		m.lastSessionStates = m.attachMonitor.States()
+		m.lastAgentStates = m.attachMonitor.AgentStates()
 	}
 	m.attachMonitor = nil
 	m.attachMonitorCancel = nil
@@ -2505,6 +2507,7 @@ func InitialModel() Model {
 		previewAutoScroll:   true,
 		audioNotifier:       audioNotifier,
 		lastSessionStates:   make(map[string]string),
+		lastAgentStates:     make(map[string]map[string]string),
 	}
 }
 
@@ -2515,15 +2518,29 @@ func (m *Model) detectStatusChanges(current []session.Info) {
 	if m.lastSessionStates == nil {
 		m.lastSessionStates = make(map[string]string)
 	}
+	if m.lastAgentStates == nil {
+		m.lastAgentStates = make(map[string]map[string]string)
+	}
 
 	currentStates := make(map[string]string, len(current))
+	currentAgentStates := make(map[string]map[string]string)
 	for _, s := range current {
 		currentStates[s.TmuxSession] = s.Status
+		if len(s.Agents) == 0 {
+			continue
+		}
+
+		agentStates := make(map[string]string, len(s.Agents))
+		for agentType, agent := range s.Agents {
+			agentStates[agentType] = agent.Status
+		}
+		currentAgentStates[s.TmuxSession] = agentStates
 	}
 
 	// First poll should only initialize state to avoid startup noise.
-	if len(m.lastSessionStates) == 0 {
+	if len(m.lastSessionStates) == 0 && len(m.lastAgentStates) == 0 {
 		m.lastSessionStates = currentStates
+		m.lastAgentStates = currentAgentStates
 		return
 	}
 
@@ -2535,7 +2552,25 @@ func (m *Model) detectStatusChanges(current []session.Info) {
 		}
 	}
 
+	for sessionName, agentStates := range currentAgentStates {
+		lastSessionAgents, ok := m.lastAgentStates[sessionName]
+		if !ok {
+			continue
+		}
+
+		for agentType, newStatus := range agentStates {
+			oldStatus, ok := lastSessionAgents[agentType]
+			if !ok {
+				continue
+			}
+			if oldStatus != newStatus {
+				m.notifyAgentStatusChange(sessionName, agentType, newStatus)
+			}
+		}
+	}
+
 	m.lastSessionStates = currentStates
+	m.lastAgentStates = currentAgentStates
 }
 
 func (m *Model) notifyStatusChange(sessionName, newStatus string) {
@@ -2546,6 +2581,10 @@ func (m *Model) notifyStatusChange(sessionName, newStatus string) {
 	if m.audioNotifier != nil {
 		m.audioNotifier.Notify(sessionName, newStatus)
 	}
+}
+
+func (m *Model) notifyAgentStatusChange(sessionName, agentType, newStatus string) {
+	m.notifyStatusChange(sessionName+":"+agentType, newStatus)
 }
 
 // stringSlicesEqual returns true if two string slices have the same elements (order-independent).
