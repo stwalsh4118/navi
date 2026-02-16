@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/stwalsh4118/navi/internal/audio"
 	"github.com/stwalsh4118/navi/internal/git"
+	"github.com/stwalsh4118/navi/internal/monitor"
 	"github.com/stwalsh4118/navi/internal/pathutil"
 	"github.com/stwalsh4118/navi/internal/remote"
 	"github.com/stwalsh4118/navi/internal/session"
@@ -58,12 +60,14 @@ type Model struct {
 	gitCache map[string]*git.Info // Cache of git info by session working directory
 
 	// Remote session support
-	Remotes           []remote.Config      // Configured remote machines
-	SSHPool           *remote.SSHPool      // SSH connection pool for remotes
-	filterMode        session.FilterMode   // Current session filter mode
-	audioNotifier     *audio.Notifier      // Audio notification manager
-	lastSessionStates map[string]string    // Last known status by session name
-	audioNotifyFn     func(string, string) // Test hook; defaults to notifier.Notify
+	Remotes             []remote.Config    // Configured remote machines
+	SSHPool             *remote.SSHPool    // SSH connection pool for remotes
+	filterMode          session.FilterMode // Current session filter mode
+	audioNotifier       *audio.Notifier    // Audio notification manager
+	lastSessionStates   map[string]string  // Last known status by session name
+	attachMonitor       *monitor.AttachMonitor
+	attachMonitorCancel context.CancelFunc
+	audioNotifyFn       func(string, string) // Test hook; defaults to notifier.Notify
 
 	// Search and filter state
 	searchQuery     string          // Current search text
@@ -295,11 +299,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					// Get the remote config for this session
 					r := m.SSHPool.GetRemoteConfig(s.Remote)
 					if r != nil {
+						m.startAttachMonitor()
 						return m, attachRemoteSession(r, s.TmuxSession)
 					}
 					// Fallback to local attach if remote config not found
 				}
 
+				m.startAttachMonitor()
 				return m, attachSession(s.TmuxSession)
 			}
 			return m, nil
@@ -815,6 +821,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case attachDoneMsg:
+		m.stopAttachMonitor()
 		// After returning from tmux, trigger immediate refresh
 		return m, pollSessions
 
@@ -1863,6 +1870,28 @@ func (m Model) getPreviewHeight() int {
 	return contentHeight * previewDefaultHeightPercent / 100
 }
 
+func (m *Model) startAttachMonitor() {
+	m.stopAttachMonitor()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	mon := monitor.New(m.audioNotifier, pathutil.ExpandPath(session.StatusDir), session.PollInterval)
+	mon.Start(ctx, m.lastSessionStates)
+
+	m.attachMonitor = mon
+	m.attachMonitorCancel = cancel
+}
+
+func (m *Model) stopAttachMonitor() {
+	if m.attachMonitorCancel != nil {
+		m.attachMonitorCancel()
+	}
+	if m.attachMonitor != nil {
+		m.lastSessionStates = m.attachMonitor.States()
+	}
+	m.attachMonitor = nil
+	m.attachMonitorCancel = nil
+}
+
 // attachSession returns a command that attaches to a local tmux session.
 // Uses tea.ExecProcess to hand off terminal control to tmux.
 func attachSession(name string) tea.Cmd {
@@ -2237,9 +2266,11 @@ func (m Model) updateSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if s.Remote != "" && m.SSHPool != nil {
 				r := m.SSHPool.GetRemoteConfig(s.Remote)
 				if r != nil {
+					m.startAttachMonitor()
 					return m, attachRemoteSession(r, s.TmuxSession)
 				}
 			}
+			m.startAttachMonitor()
 			return m, attachSession(s.TmuxSession)
 		}
 		return m, nil

@@ -19,41 +19,6 @@ import (
 	"github.com/stwalsh4118/navi/internal/tokens"
 )
 
-// readSessions reads all JSON status files from the specified directory
-// and parses them into session.Info structs.
-// Returns an empty slice if directory doesn't exist or on errors.
-// Malformed JSON files are skipped silently.
-func readSessions(dir string) ([]session.Info, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	var sessions []session.Info
-	for _, entry := range entries {
-		if !strings.HasSuffix(entry.Name(), ".json") {
-			continue
-		}
-
-		path := filepath.Join(dir, entry.Name())
-		data, err := os.ReadFile(path)
-		if err != nil {
-			continue // skip unreadable files
-		}
-
-		var s session.Info
-		if err := json.Unmarshal(data, &s); err != nil {
-			continue // skip malformed JSON
-		}
-
-		sessions = append(sessions, s)
-	}
-	return sessions, nil
-}
-
 // capturePane captures the recent output from a tmux session pane.
 // Uses tmux capture-pane to retrieve the last N lines of output.
 // ANSI escape sequences are stripped for clean display.
@@ -374,7 +339,7 @@ func pollSessions() tea.Msg {
 	cleanStaleSessions(dir, liveSessions)
 
 	// Read remaining sessions
-	sessions, err := readSessions(dir)
+	sessions, err := session.ReadStatusFiles(dir)
 	if err != nil {
 		return sessionsMsg(nil)
 	}
