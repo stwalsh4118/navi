@@ -57,4 +57,4 @@ Navi's TUI currently shows a flat session list. There's no project-level aggrega
 
 ## Related Tasks
 
-_Tasks will be created when this PBI moves to Agreed via `/plan-pbi 47`._
+[View Tasks](./tasks.md)
