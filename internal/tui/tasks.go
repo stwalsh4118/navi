@@ -17,8 +17,9 @@ const (
 
 // tasksMsg carries refreshed task data from provider execution.
 type tasksMsg struct {
-	groupsByProject map[string][]task.TaskGroup // keyed by project dir
-	errors          map[string]error            // keyed by project dir
+	groupsByProject  map[string][]task.TaskGroup // keyed by project dir
+	errors           map[string]error            // keyed by project dir
+	resultsByProject map[string]*task.ProviderResult
 }
 
 // taskConfigsMsg carries discovered project configs from session CWDs.
@@ -34,6 +35,7 @@ func taskRefreshCmd(configs []task.ProjectConfig, cache *task.ResultCache, globa
 	return func() tea.Msg {
 		groupsByProject := make(map[string][]task.TaskGroup)
 		errors := make(map[string]error)
+		resultsByProject := make(map[string]*task.ProviderResult)
 
 		for _, cfg := range configs {
 			// Check cache first
@@ -43,6 +45,7 @@ func taskRefreshCmd(configs []task.ProjectConfig, cache *task.ResultCache, globa
 				} else if cached.Result != nil {
 					groups := normalizeGroups(cached.Result, cfg, globalConfig)
 					groupsByProject[cfg.ProjectDir] = groups
+					resultsByProject[cfg.ProjectDir] = cached.Result
 				}
 				continue
 			}
@@ -58,9 +61,10 @@ func taskRefreshCmd(configs []task.ProjectConfig, cache *task.ResultCache, globa
 
 			groups := normalizeGroups(result, cfg, globalConfig)
 			groupsByProject[cfg.ProjectDir] = groups
+			resultsByProject[cfg.ProjectDir] = result
 		}
 
-		return tasksMsg{groupsByProject: groupsByProject, errors: errors}
+		return tasksMsg{groupsByProject: groupsByProject, errors: errors, resultsByProject: resultsByProject}
 	}
 }
 

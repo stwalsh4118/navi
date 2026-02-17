@@ -16,6 +16,7 @@ import (
 	"github.com/stwalsh4118/navi/internal/git"
 	"github.com/stwalsh4118/navi/internal/monitor"
 	"github.com/stwalsh4118/navi/internal/pathutil"
+	"github.com/stwalsh4118/navi/internal/pm"
 	"github.com/stwalsh4118/navi/internal/remote"
 	"github.com/stwalsh4118/navi/internal/session"
 	"github.com/stwalsh4118/navi/internal/task"
@@ -110,6 +111,12 @@ type Model struct {
 	// PR auto-refresh state
 	prAutoRefreshActive bool // Whether auto-refresh ticker is active for pending checks
 
+	// PM engine state
+	pmEngine      *pm.Engine
+	pmOutput      *pm.PMOutput
+	pmTaskResults map[string]*task.ProviderResult
+	pmRunInFlight bool
+
 	// Content viewer state
 	contentViewerTitle      string      // Title displayed in the content viewer header
 	contentViewerLines      []string    // Content split into lines for scrolling
@@ -150,6 +157,15 @@ type previewTickMsg time.Time
 
 // previewDebounceMsg is sent after cursor movement debounce delay.
 type previewDebounceMsg struct{}
+
+// pmTickMsg is sent to trigger periodic PM engine refresh.
+type pmTickMsg time.Time
+
+// pmOutputMsg delivers PM engine results back to the model.
+type pmOutputMsg struct {
+	output *pm.PMOutput
+	err    error
+}
 
 // gitTickMsg is sent to trigger periodic git info refresh.
 type gitTickMsg time.Time
@@ -203,7 +219,7 @@ func (m Model) Init() tea.Cmd {
 		m.gitCache = make(map[string]*git.Info)
 	}
 
-	cmds := []tea.Cmd{tickCmd(), pollSessions, gitTickCmd()}
+	cmds := []tea.Cmd{tickCmd(), pollSessions, gitTickCmd(), pmTickCmd()}
 
 	// Start task refresh tick
 	interval := taskDefaultRefreshInterval
@@ -644,11 +660,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tasksMsg:
 		m.taskGroupsByProject = msg.groupsByProject
 		m.taskErrors = msg.errors
+		m.pmTaskResults = msg.resultsByProject
 		m.taskRefreshing = false // Clear refreshing indicator
 		// Update displayed groups if task panel is visible
 		if m.taskPanelVisible {
 			m.updateTaskPanelForCursor()
 		}
+		return m, nil
+
+	case pmTickMsg:
+		if m.pmEngine == nil {
+			return m, pmTickCmd()
+		}
+		if m.pmRunInFlight {
+			return m, pmTickCmd()
+		}
+		m.pmRunInFlight = true
+		return m, tea.Batch(pmRunCmd(m.pmEngine, m.sessions, m.pmTaskResults), pmTickCmd())
+
+	case pmOutputMsg:
+		m.pmRunInFlight = false
+		if msg.err == nil {
+			m.pmOutput = msg.output
+			return m, nil
+		}
+		m.err = msg.err
 		return m, nil
 
 	case taskConfigsMsg:
@@ -2508,6 +2544,8 @@ func InitialModel() Model {
 		audioNotifier:       audioNotifier,
 		lastSessionStates:   make(map[string]string),
 		lastAgentStates:     make(map[string]map[string]string),
+		pmEngine:            pm.NewEngine(),
+		pmTaskResults:       make(map[string]*task.ProviderResult),
 	}
 }
 
