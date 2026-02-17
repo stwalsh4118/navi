@@ -14,3 +14,17 @@ This document lists all tasks associated with PBI 46.
 | 46-4 | [JSONL Event Log and Pruning](./46-4.md) | Proposed | Append events to JSONL file with 24-hour rolling pruning |
 | 46-5 | [PM Engine and TUI Integration](./46-5.md) | Proposed | Orchestrate snapshot-diff-emit pipeline and hook into TUI polling cycle |
 | 46-6 | [E2E CoS Test](./46-6.md) | Proposed | Verify all PBI-46 acceptance criteria with integration tests |
+
+## Dependency Graph
+
+```
+46-1 (Types)
+ ├── 46-2 (Discovery/Snapshot)
+ │    └── 46-3 (Diffing/Events)
+ │         └── 46-5 (Engine + TUI)
+ └── 46-4 (Event Log)
+      └── 46-5 (Engine + TUI)
+           └── 46-6 (E2E CoS Test)
+```
+
+**Implementation order**: 46-1 → 46-2 → 46-3 → 46-4 → 46-5 → 46-6
