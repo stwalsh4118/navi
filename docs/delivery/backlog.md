@@ -59,7 +59,7 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 51 | Developer | As a developer, I want to ask the PM questions from the TUI so that I can interrogate its knowledge about my projects conversationally | Proposed | [View Details](./51/prd.md) |
 | 52 | Developer | As a developer, I want to register projects in config for tracking without active sessions so that the PM has full portfolio awareness | Proposed | [View Details](./52/prd.md) |
 | 53 | User | As a user, I want the session status icon and message to reflect the aggregate state of all agents so that external agents like OpenCode are first-class citizens in the display | Done | [View Details](./53/prd.md) |
-| 54 | Developer | As a developer, I want PM current-PBI detection to use session-scoped signals plus provider hints so that each active session maps to the correct PBI even during concurrent work | Proposed | [View Details](./54/prd.md) |
+| 54 | Developer | As a developer, I want PM current-PBI detection to use session-scoped signals plus provider hints so that each active session maps to the correct PBI even during concurrent work | Agreed | [View Details](./54/prd.md) |
 
 ## History Log
 
@@ -178,3 +178,4 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 2026-02-17 10:41:25 | 47 | Status Change | Proposed → Agreed - User approved for task breakdown | User |
 | 20260217-234743 | 47 | Status Change | Agreed → Done - All 6 tasks Done, PM TUI three-zone view implemented and verified | AI_Agent |
 | 20260217-133155 | 54 | Created | PBI created from feature request: session-scoped current PBI detection with provider hint integration | AI_Agent |
+| 2026-02-18 00:45:39 | 54 | Status Change | Proposed → Agreed - User approved for task breakdown | User |
