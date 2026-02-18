@@ -54,12 +54,7 @@ func (m *Model) togglePMView() tea.Cmd {
 
 	m.clearSearchState()
 
-	if m.pmEngine == nil || m.pmRunInFlight {
-		return nil
-	}
-
-	m.pmRunInFlight = true
-	return pmRunCmd(m.pmEngine, m.sessions, m.pmTaskResults)
+	return nil
 }
 
 func (m Model) updatePMView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {

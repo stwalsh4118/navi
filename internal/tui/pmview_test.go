@@ -49,8 +49,8 @@ func TestPMViewToggleAndFooter(t *testing.T) {
 	}
 }
 
-func TestPMViewImmediateRefreshOnOpen(t *testing.T) {
-	t.Run("open PM view starts PM run when engine is ready", func(t *testing.T) {
+func TestPMViewNoRefreshOnOpen(t *testing.T) {
+	t.Run("open PM view does not trigger PM run", func(t *testing.T) {
 		m := Model{
 			width:           120,
 			height:          40,
@@ -66,35 +66,11 @@ func TestPMViewImmediateRefreshOnOpen(t *testing.T) {
 		if !updated.pmViewVisible {
 			t.Fatalf("expected PM view to be visible after opening")
 		}
-		if !updated.pmRunInFlight {
-			t.Fatalf("expected pmRunInFlight to be true after opening PM view")
-		}
-		if cmd == nil {
-			t.Fatalf("expected immediate PM refresh command when opening PM view")
-		}
-	})
-
-	t.Run("open PM view skips run when already in flight", func(t *testing.T) {
-		m := Model{
-			width:           120,
-			height:          40,
-			searchInput:     initSearchInput(),
-			taskSearchInput: initTaskSearchInput(),
-			pmEngine:        pm.NewEngine(),
-			pmRunInFlight:   true,
-		}
-
-		updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'P'}})
-		updated := updatedModel.(Model)
-
-		if !updated.pmViewVisible {
-			t.Fatalf("expected PM view to be visible after opening")
-		}
-		if !updated.pmRunInFlight {
-			t.Fatalf("expected pmRunInFlight to remain true")
+		if updated.pmRunInFlight {
+			t.Fatalf("expected pmRunInFlight to remain false after opening PM view")
 		}
 		if cmd != nil {
-			t.Fatalf("expected no command when PM run is already in flight")
+			t.Fatalf("expected nil command when opening PM view")
 		}
 	})
 
