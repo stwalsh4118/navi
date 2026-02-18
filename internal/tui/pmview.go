@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	ansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/stwalsh4118/navi/internal/pm"
 )
@@ -397,7 +398,7 @@ func (m Model) renderPMProjectRow(snapshot pm.ProjectSnapshot, width int) string
 
 	joined := strings.Join(parts, "  ")
 	if lipgloss.Width(joined) > width {
-		joined = truncate(joined, width)
+		joined = pmTruncateANSI(joined, width)
 	}
 	return joined
 }
@@ -428,7 +429,7 @@ func (m Model) renderPMProjectExpansion(snapshot pm.ProjectSnapshot, width int) 
 
 	for i := range lines {
 		if lipgloss.Width(lines[i]) > width {
-			lines[i] = truncate(lines[i], width)
+			lines[i] = pmTruncateANSI(lines[i], width)
 		}
 	}
 	return lines
@@ -506,9 +507,16 @@ func (m Model) renderPMEventRow(event pm.Event, width int) string {
 	detail := dimStyle.Render(pmEventDetail(event))
 	line := strings.Join([]string{timePart, typePart, projectPart, detail}, "  ")
 	if lipgloss.Width(line) > width {
-		line = truncate(line, width)
+		line = pmTruncateANSI(line, width)
 	}
 	return line
+}
+
+func pmTruncateANSI(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	return ansi.Truncate(s, width, "")
 }
 
 func pmEventTypeLabel(eventType pm.EventType) string {

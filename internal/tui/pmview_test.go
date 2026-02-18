@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/stwalsh4118/navi/internal/pm"
 	"github.com/stwalsh4118/navi/internal/session"
@@ -199,5 +200,34 @@ func TestPMProjectExpansionAndResponsiveLayout(t *testing.T) {
 	narrow := updated.renderPMView(70, 20)
 	if !strings.Contains(narrow, "Terminal too narrow") {
 		t.Fatalf("expected narrow terminal warning")
+	}
+}
+
+func TestZeroClearsProjectFilter(t *testing.T) {
+	now := time.Now().Unix()
+	m := Model{
+		width:              120,
+		height:             40,
+		pmProjectFilterDir: "/tmp/proj-a",
+		sessions: []session.Info{
+			{TmuxSession: "a", CWD: "/tmp/proj-a", Status: "working", Timestamp: now},
+			{TmuxSession: "b", CWD: "/tmp/proj-b", Status: "done", Timestamp: now},
+		},
+		cursor: 0,
+	}
+
+	updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'0'}})
+	updated := updatedModel.(Model)
+
+	if updated.pmProjectFilterDir != "" {
+		t.Fatalf("expected project filter to be cleared by 0 key")
+	}
+}
+
+func TestPMTruncateANSIRespectsDisplayWidth(t *testing.T) {
+	styled := greenStyle.Render("abcdef") + " " + boldStyle.Render("ghij")
+	truncated := pmTruncateANSI(styled, 5)
+	if lipgloss.Width(truncated) > 5 {
+		t.Fatalf("expected ANSI truncate width <= 5, got %d", lipgloss.Width(truncated))
 	}
 }

@@ -591,9 +591,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "0":
-			// Clear status filter
+			// Clear status and project filters
 			selectedSession := m.selectedSessionName()
 			m.statusFilter = ""
+			m.pmProjectFilterDir = ""
 			m.preserveCursor(selectedSession)
 			if m.searchQuery != "" {
 				m.computeSearchMatches()
