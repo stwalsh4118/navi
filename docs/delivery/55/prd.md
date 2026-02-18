@@ -49,4 +49,4 @@ Optimize provider refresh latency by improving execution strategy in task refres
 
 ## Related Tasks
 
-_Tasks will be created when this PBI is approved via `/plan-pbi 55`._
+[View Tasks](./tasks.md)

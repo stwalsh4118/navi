@@ -60,7 +60,7 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 52 | Developer | As a developer, I want to register projects in config for tracking without active sessions so that the PM has full portfolio awareness | Proposed | [View Details](./52/prd.md) |
 | 53 | User | As a user, I want the session status icon and message to reflect the aggregate state of all agents so that external agents like OpenCode are first-class citizens in the display | Done | [View Details](./53/prd.md) |
 | 54 | Developer | As a developer, I want PM current-PBI detection to use session-scoped signals plus provider hints so that each active session maps to the correct PBI even during concurrent work | Done | [View Details](./54/prd.md) |
-| 55 | User | As a user, I want PM project status to refresh immediately with visible loading feedback and faster provider updates so that pressing P feels responsive and trustworthy | Proposed | [View Details](./55/prd.md) |
+| 55 | User | As a user, I want PM project status to refresh immediately with visible loading feedback and faster provider updates so that pressing P feels responsive and trustworthy | Agreed | [View Details](./55/prd.md) |
 
 ## History Log
 
@@ -190,3 +190,4 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 2026-02-18 06:25:05 | 54 | Status Change | Done → Agreed - Added follow-up task 54-8 for provider-agnostic branch ID resolution from PR review feedback | AI_Agent |
 | 2026-02-18 07:17:04 | 54 | Status Change | Agreed → InProgress - Started implementation of task 54-8 follow-up | AI_Agent |
 | 2026-02-18 07:39:37 | 54 | Status Change | InProgress → Done - Task 54-8 approved and completed | AI_Agent |
+| 2026-02-18 08:00:46 | 55 | Status Change | Proposed → Agreed. Auto-approved for planning. | AI_Agent |
