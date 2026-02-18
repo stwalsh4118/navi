@@ -21,19 +21,20 @@ type TaskCounts struct {
 }
 
 type ProjectSnapshot struct {
-	ProjectName     string     `json:"project_name"`
-	ProjectDir      string     `json:"project_dir"`
-	HeadSHA         string     `json:"head_sha"`
-	Branch          string     `json:"branch"`
-	CommitsAhead    int        `json:"commits_ahead"`
-	Dirty           bool       `json:"dirty"`
-	CurrentPBIID    string     `json:"current_pbi_id"`
-	CurrentPBITitle string     `json:"current_pbi_title"`
-	TaskCounts      TaskCounts `json:"task_counts"`
-	SessionStatus   string     `json:"session_status"`
-	LastActivity    time.Time  `json:"last_activity"`
-	SessionCount    int        `json:"session_count"`
-	PRNumber        int        `json:"pr_number,omitempty"`
+	ProjectName      string     `json:"project_name"`
+	ProjectDir       string     `json:"project_dir"`
+	HeadSHA          string     `json:"head_sha"`
+	Branch           string     `json:"branch"`
+	CommitsAhead     int        `json:"commits_ahead"`
+	Dirty            bool       `json:"dirty"`
+	CurrentPBIID     string     `json:"current_pbi_id"`
+	CurrentPBITitle  string     `json:"current_pbi_title"`
+	CurrentPBISource string     `json:"current_pbi_source,omitempty"`
+	TaskCounts       TaskCounts `json:"task_counts"`
+	SessionStatus    string     `json:"session_status"`
+	LastActivity     time.Time  `json:"last_activity"`
+	SessionCount     int        `json:"session_count"`
+	PRNumber         int        `json:"pr_number,omitempty"`
 }
 
 type Event struct {

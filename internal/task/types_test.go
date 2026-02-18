@@ -6,11 +6,14 @@ import (
 
 func TestParseProviderOutput_GroupedFormat(t *testing.T) {
 	input := `{
+		"current_pbi_id": "PBI-13",
+		"current_pbi_title": "Search & Filter",
 		"groups": [
 			{
 				"id": "PBI-13",
 				"title": "Search & Filter",
 				"status": "in_progress",
+				"is_current": true,
 				"url": "https://github.com/owner/repo/milestone/3",
 				"tasks": [
 					{
@@ -42,6 +45,12 @@ func TestParseProviderOutput_GroupedFormat(t *testing.T) {
 	if len(result.Groups) != 1 {
 		t.Fatalf("expected 1 group, got %d", len(result.Groups))
 	}
+	if result.CurrentPBIID != "PBI-13" {
+		t.Errorf("expected current pbi id 'PBI-13', got %q", result.CurrentPBIID)
+	}
+	if result.CurrentPBITitle != "Search & Filter" {
+		t.Errorf("expected current pbi title 'Search & Filter', got %q", result.CurrentPBITitle)
+	}
 
 	g := result.Groups[0]
 	if g.ID != "PBI-13" {
@@ -55,6 +64,9 @@ func TestParseProviderOutput_GroupedFormat(t *testing.T) {
 	}
 	if g.URL != "https://github.com/owner/repo/milestone/3" {
 		t.Errorf("expected group URL, got %q", g.URL)
+	}
+	if !g.IsCurrent {
+		t.Error("expected group is_current to be true")
 	}
 	if len(g.Tasks) != 2 {
 		t.Fatalf("expected 2 tasks, got %d", len(g.Tasks))
