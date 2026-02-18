@@ -17,6 +17,8 @@ func TestPMViewToggleAndFooter(t *testing.T) {
 	m := Model{
 		width:              120,
 		height:             40,
+		searchInput:        initSearchInput(),
+		taskSearchInput:    initTaskSearchInput(),
 		previewVisible:     true,
 		taskPanelVisible:   true,
 		searchQuery:        "abc",
@@ -47,6 +49,70 @@ func TestPMViewToggleAndFooter(t *testing.T) {
 	}
 }
 
+func TestPMViewImmediateRefreshOnOpen(t *testing.T) {
+	t.Run("open PM view starts PM run when engine is ready", func(t *testing.T) {
+		m := Model{
+			width:           120,
+			height:          40,
+			searchInput:     initSearchInput(),
+			taskSearchInput: initTaskSearchInput(),
+			pmEngine:        pm.NewEngine(),
+			pmTaskResults:   make(map[string]*task.ProviderResult),
+		}
+
+		updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'P'}})
+		updated := updatedModel.(Model)
+
+		if !updated.pmViewVisible {
+			t.Fatalf("expected PM view to be visible after opening")
+		}
+		if !updated.pmRunInFlight {
+			t.Fatalf("expected pmRunInFlight to be true after opening PM view")
+		}
+		if cmd == nil {
+			t.Fatalf("expected immediate PM refresh command when opening PM view")
+		}
+	})
+
+	t.Run("open PM view skips run when already in flight", func(t *testing.T) {
+		m := Model{
+			width:           120,
+			height:          40,
+			searchInput:     initSearchInput(),
+			taskSearchInput: initTaskSearchInput(),
+			pmEngine:        pm.NewEngine(),
+			pmRunInFlight:   true,
+		}
+
+		updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'P'}})
+		updated := updatedModel.(Model)
+
+		if !updated.pmViewVisible {
+			t.Fatalf("expected PM view to be visible after opening")
+		}
+		if !updated.pmRunInFlight {
+			t.Fatalf("expected pmRunInFlight to remain true")
+		}
+		if cmd != nil {
+			t.Fatalf("expected no command when PM run is already in flight")
+		}
+	})
+
+	t.Run("closing PM view with P returns nil command", func(t *testing.T) {
+		m := Model{pmViewVisible: true, pmZoneFocus: pmZoneProjects}
+
+		updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'P'}})
+		updated := updatedModel.(Model)
+
+		if updated.pmViewVisible {
+			t.Fatalf("expected PM view to close when pressing P while PM view is open")
+		}
+		if cmd != nil {
+			t.Fatalf("expected nil command when closing PM view")
+		}
+	})
+}
+
 func TestPMViewHeaderAndPlaceholder(t *testing.T) {
 	m := Model{width: 120, height: 40, pmViewVisible: true}
 
@@ -65,6 +131,136 @@ func TestPMViewHeaderAndPlaceholder(t *testing.T) {
 	if !strings.Contains(view, "No events yet") {
 		t.Fatalf("expected empty events placeholder")
 	}
+}
+
+func TestPMBriefingLoadingIndicator(t *testing.T) {
+	t.Run("shows refreshing when pm run in flight", func(t *testing.T) {
+		m := Model{pmRunInFlight: true}
+		briefing := m.renderPMBriefing(120, 6)
+		if !strings.Contains(briefing, pmRefreshingLabel) {
+			t.Fatalf("expected refreshing indicator when pmRunInFlight is true")
+		}
+	})
+
+	t.Run("single-line briefing shows refreshing when in flight", func(t *testing.T) {
+		m := Model{pmRunInFlight: true}
+		briefing := m.renderPMBriefing(120, 1)
+		if !strings.Contains(briefing, pmRefreshingLabel) {
+			t.Fatalf("expected refreshing indicator in single-line briefing")
+		}
+	})
+
+	t.Run("does not show refreshing when pm run is idle", func(t *testing.T) {
+		m := Model{pmRunInFlight: false}
+		briefing := m.renderPMBriefing(120, 6)
+		if strings.Contains(briefing, pmRefreshingLabel) {
+			t.Fatalf("did not expect refreshing indicator when pmRunInFlight is false")
+		}
+	})
+
+	t.Run("shows refreshing and error when both present", func(t *testing.T) {
+		m := Model{pmRunInFlight: true, pmLastError: "boom"}
+		briefing := m.renderPMBriefing(120, 6)
+		if !strings.Contains(briefing, pmRefreshingLabel) {
+			t.Fatalf("expected refreshing indicator when pm run is in flight")
+		}
+		if !strings.Contains(briefing, "PM refresh error: boom") {
+			t.Fatalf("expected PM error text when pmLastError is set")
+		}
+	})
+
+	t.Run("pm view rendering includes refreshing indicator", func(t *testing.T) {
+		m := Model{pmRunInFlight: true}
+		view := m.renderPMView(120, 20)
+		if !strings.Contains(view, pmRefreshingLabel) {
+			t.Fatalf("expected PM view to include refreshing indicator")
+		}
+	})
+}
+
+func TestPMViewManualRefreshKey(t *testing.T) {
+	t.Run("r triggers PM refresh and invalidates task cache", func(t *testing.T) {
+		cache := task.NewResultCache()
+		cache.Set("/tmp/proj", &task.ProviderResult{}, nil)
+		cache.Set("/tmp/proj-2", &task.ProviderResult{}, nil)
+
+		m := Model{
+			pmViewVisible:    true,
+			pmZoneFocus:      pmZoneEvents,
+			pmEngine:         pm.NewEngine(),
+			pmTaskResults:    make(map[string]*task.ProviderResult),
+			taskCache:        cache,
+			taskGlobalConfig: &task.GlobalConfig{},
+			taskProjectConfigs: []task.ProjectConfig{
+				{ProjectDir: "/tmp/proj", Tasks: task.ProjectTaskConfig{Provider: "test"}},
+			},
+		}
+
+		updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+		updated := updatedModel.(Model)
+
+		if !updated.pmRunInFlight {
+			t.Fatalf("expected pmRunInFlight to be true after manual refresh")
+		}
+		if cmd == nil {
+			t.Fatalf("expected refresh command from r key in PM view")
+		}
+
+		if _, ok := cache.Get("/tmp/proj", 5*time.Minute); ok {
+			t.Fatalf("expected task cache entry /tmp/proj to be invalidated before dispatch")
+		}
+		if _, ok := cache.Get("/tmp/proj-2", 5*time.Minute); ok {
+			t.Fatalf("expected task cache entry /tmp/proj-2 to be invalidated before dispatch")
+		}
+	})
+
+	t.Run("r is ignored while PM run is already in flight", func(t *testing.T) {
+		cache := task.NewResultCache()
+		cache.Set("/tmp/proj", &task.ProviderResult{}, nil)
+
+		m := Model{
+			pmViewVisible: true,
+			pmRunInFlight: true,
+			pmEngine:      pm.NewEngine(),
+			taskCache:     cache,
+		}
+
+		updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+		updated := updatedModel.(Model)
+
+		if !updated.pmRunInFlight {
+			t.Fatalf("expected pmRunInFlight to remain true")
+		}
+		if cmd != nil {
+			t.Fatalf("expected nil command when pmRunInFlight is already true")
+		}
+		if _, ok := cache.Get("/tmp/proj", 5*time.Minute); !ok {
+			t.Fatalf("expected cache to remain untouched when refresh is ignored")
+		}
+	})
+
+	t.Run("r is ignored when PM engine is unavailable", func(t *testing.T) {
+		cache := task.NewResultCache()
+		cache.Set("/tmp/proj", &task.ProviderResult{}, nil)
+
+		m := Model{
+			pmViewVisible: true,
+			taskCache:     cache,
+		}
+
+		updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+		updated := updatedModel.(Model)
+
+		if updated.pmRunInFlight {
+			t.Fatalf("expected pmRunInFlight to remain false when PM engine is nil")
+		}
+		if cmd != nil {
+			t.Fatalf("expected nil command when PM engine is unavailable")
+		}
+		if _, ok := cache.Get("/tmp/proj", 5*time.Minute); !ok {
+			t.Fatalf("expected cache to remain untouched when PM engine is unavailable")
+		}
+	})
 }
 
 func TestPMProjectsSortAndSelectionJump(t *testing.T) {
