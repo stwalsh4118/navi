@@ -304,56 +304,49 @@ func (m Model) renderPMProjects(width, height int) string {
 	}
 
 	hasAbove := offset > 0
-	available := maxVisible
-	if hasAbove {
-		available--
-	}
-	end := offset + available
-	if end > len(projectRows) {
-		end = len(projectRows)
-	}
-	hasBelow := end < len(projectRows)
-	if hasBelow {
-		available--
-		end = offset + available
-		if end > len(projectRows) {
-			end = len(projectRows)
-		}
-	}
-
 	lines := make([]string, 0, maxVisible)
 	if hasAbove {
 		lines = append(lines, dimStyle.Render(fmt.Sprintf(scrollIndicatorAbove, offset)))
 	}
 
-	for i := offset; i < end; i++ {
+	slotsRemaining := maxVisible - len(lines)
+	if slotsRemaining < 0 {
+		slotsRemaining = 0
+	}
+
+	nextRowIndex := offset
+	for nextRowIndex < len(projectRows) && slotsRemaining > 0 {
+		i := nextRowIndex
 		isSelected := i == cursor
 		row := m.renderPMProjectRow(projectRows[i], width-4)
 		if isSelected {
 			row = selectedStyle.Render(row)
 		}
 		lines = append(lines, row)
+		slotsRemaining--
 
-		if isSelected && m.pmExpandedProjects[projectRows[i].ProjectDir] {
+		if isSelected && slotsRemaining > 0 && m.pmExpandedProjects[projectRows[i].ProjectDir] {
 			details := m.renderPMProjectExpansion(projectRows[i], width-4)
 			for _, detail := range details {
-				if len(lines) >= maxVisible {
+				if slotsRemaining == 0 {
 					break
 				}
 				lines = append(lines, detail)
+				slotsRemaining--
 			}
 		}
-		if len(lines) >= maxVisible {
-			break
-		}
+
+		nextRowIndex++
 	}
 
-	if hasBelow && len(lines) < maxVisible {
-		below := len(projectRows) - end
-		if below < 0 {
-			below = 0
+	if nextRowIndex < len(projectRows) {
+		below := len(projectRows) - nextRowIndex
+		indicator := dimStyle.Render(fmt.Sprintf(scrollIndicatorBelow, below))
+		if len(lines) < maxVisible {
+			lines = append(lines, indicator)
+		} else if len(lines) > 0 {
+			lines[len(lines)-1] = indicator
 		}
-		lines = append(lines, dimStyle.Render(fmt.Sprintf(scrollIndicatorBelow, below)))
 	}
 
 	return boxStyleToUse.Width(width - 2).Render(strings.Join(lines, "\n"))

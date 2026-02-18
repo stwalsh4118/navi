@@ -231,3 +231,33 @@ func TestPMTruncateANSIRespectsDisplayWidth(t *testing.T) {
 		t.Fatalf("expected ANSI truncate width <= 5, got %d", lipgloss.Width(truncated))
 	}
 }
+
+func TestPMProjectsShowsBelowIndicatorWhenExpansionConsumesSlots(t *testing.T) {
+	now := time.Now().UTC()
+	m := Model{
+		width:              120,
+		height:             40,
+		pmViewVisible:      true,
+		pmZoneFocus:        pmZoneProjects,
+		pmProjectCursor:    0,
+		pmExpandedProjects: map[string]bool{"/tmp/proj-a": true},
+		pmTaskResults: map[string]*task.ProviderResult{
+			"/tmp/proj-a": {
+				Tasks: []task.Task{
+					{ID: "47-1", Title: "Task one", Status: "InProgress"},
+					{ID: "47-2", Title: "Task two", Status: "Review"},
+				},
+			},
+		},
+		pmOutput: &pm.PMOutput{Snapshots: []pm.ProjectSnapshot{
+			{ProjectName: "A", ProjectDir: "/tmp/proj-a", Branch: "feature/a", HeadSHA: "abcdef1", LastActivity: now},
+			{ProjectName: "B", ProjectDir: "/tmp/proj-b", Branch: "feature/b", HeadSHA: "abcdef2", LastActivity: now.Add(-1 * time.Minute)},
+			{ProjectName: "C", ProjectDir: "/tmp/proj-c", Branch: "feature/c", HeadSHA: "abcdef3", LastActivity: now.Add(-2 * time.Minute)},
+		}},
+	}
+
+	projects := m.renderPMProjects(120, 6)
+	if !strings.Contains(projects, "below") {
+		t.Fatalf("expected below indicator when expansion hides project rows")
+	}
+}
