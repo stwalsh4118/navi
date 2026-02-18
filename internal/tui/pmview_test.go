@@ -384,11 +384,11 @@ func TestPMProjectExpansionAndResponsiveLayout(t *testing.T) {
 		t.Fatalf("expected expanded project details in render")
 	}
 
-	b, p, e := pmZoneHeights(40)
+	b, p, e := pmZoneHeights(40, 10)
 	if b == 0 || p == 0 || e == 0 {
 		t.Fatalf("expected all zones for normal height")
 	}
-	b, _, _ = pmZoneHeights(14)
+	b, _, _ = pmZoneHeights(14, 10)
 	if b != 0 {
 		t.Fatalf("expected briefing hidden for very short terminal")
 	}

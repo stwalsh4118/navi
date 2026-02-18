@@ -56,4 +56,4 @@ N/A — backend PBI. Output is consumed by PBI-49 (briefing panel rendering).
 
 ## Related Tasks
 
-_Tasks will be created when this PBI moves to Agreed via `/plan-pbi 48`._
+[View Tasks](./tasks.md)

@@ -118,6 +118,11 @@ type Model struct {
 	pmRunInFlight         bool
 	pmViewVisible         bool
 	pmZoneFocus           int
+	pmInvoker             *pm.Invoker
+	pmBriefing            *pm.PMBriefing
+	pmBriefingStale       bool
+	pmInvokeInFlight      bool
+	pmInvokeStatus        string
 	pmProjectCursor       int
 	pmProjectScrollOffset int
 	pmEventScrollOffset   int
@@ -173,6 +178,20 @@ type pmTickMsg time.Time
 type pmOutputMsg struct {
 	output *pm.PMOutput
 	err    error
+}
+
+// pmInvokeMsg delivers Claude PM invoker results back to the model.
+type pmInvokeMsg struct {
+	briefing *pm.PMBriefing
+	isStale  bool
+	err      error
+}
+
+// pmStreamMsg delivers an intermediate streaming status update from the PM invoker.
+type pmStreamMsg struct {
+	status   string
+	streamCh <-chan pm.StreamEvent
+	resultCh <-chan pmInvokeMsg
 }
 
 // gitTickMsg is sent to trigger periodic git info refresh.
@@ -705,6 +724,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pmRunInFlight = false
 		if msg.err == nil {
 			m.pmOutput = msg.output
+			m.pmLastError = ""
+			// Scan events for PM invocation triggers.
+			if m.pmInvoker != nil && !m.pmInvokeInFlight && msg.output != nil {
+				if trigger := pmCheckTrigger(msg.output.Events); trigger != "" {
+					m.pmInvokeInFlight = true
+					return m, pmInvokeCmd(m.pmInvoker, trigger, msg.output.Snapshots, msg.output.Events)
+				}
+			}
+			return m, nil
+		}
+		m.pmLastError = msg.err.Error()
+		return m, nil
+
+	case pmStreamMsg:
+		m.pmInvokeStatus = msg.status
+		return m, pmStreamReadCmd(msg.streamCh, msg.resultCh)
+
+	case pmInvokeMsg:
+		m.pmInvokeInFlight = false
+		m.pmInvokeStatus = ""
+		if msg.err == nil {
+			m.pmBriefing = msg.briefing
+			m.pmBriefingStale = msg.isStale
 			m.pmLastError = ""
 			return m, nil
 		}
@@ -2567,7 +2609,7 @@ func InitialModel() Model {
 	}
 	audioNotifier := audio.NewNotifier(audioConfig)
 
-	return Model{
+	m := Model{
 		sessions:            []session.Info{},
 		cursor:              0,
 		width:               80,
@@ -2588,9 +2630,35 @@ func InitialModel() Model {
 		lastSessionStates:   make(map[string]string),
 		lastAgentStates:     make(map[string]map[string]string),
 		pmEngine:            pm.NewEngine(),
+		pmInvoker:           initPMInvoker(),
 		pmTaskResults:       make(map[string]*task.ProviderResult),
 		pmExpandedProjects:  make(map[string]bool),
 	}
+
+	// Load cached briefing from last session if available.
+	if cached := initPMCachedBriefing(); cached != nil {
+		m.pmBriefing = cached
+		m.pmBriefingStale = true
+	}
+
+	return m
+}
+
+// initPMInvoker attempts to create a PM invoker. Returns nil if storage
+// initialization fails (PM invocation is optional).
+func initPMInvoker() *pm.Invoker {
+	invoker, _ := pm.NewInvoker()
+	return invoker
+}
+
+// initPMCachedBriefing loads the last cached PM briefing from disk.
+// Returns nil if no cache exists.
+func initPMCachedBriefing() *pm.PMBriefing {
+	cached, err := pm.LoadCachedOutput()
+	if err != nil || cached == nil {
+		return nil
+	}
+	return cached.Briefing
 }
 
 func (m *Model) detectStatusChanges(current []session.Info) {
