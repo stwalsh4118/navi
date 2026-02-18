@@ -8,13 +8,13 @@ This document lists all tasks associated with PBI 54.
 
 | Task ID | Name | Status | Description |
 | :------ | :--- | :----- | :---------- |
-| 54-1 | [Extend Type Contracts for Current-PBI Resolution](./54-1.md) | Proposed | Add provider hint, session metadata, and snapshot provenance fields to existing types |
-| 54-2 | [Branch-Pattern PBI Inference Utility](./54-2.md) | Proposed | Create utility to extract PBI ID from git branch names using configurable patterns |
-| 54-3 | [Status-Priority Heuristic for Task Groups](./54-3.md) | Proposed | Implement intelligent group selection based on PBI status instead of array order |
-| 54-4 | [Current-PBI Multi-Strategy Resolver](./54-4.md) | Proposed | Implement resolver with 5-level precedence chain and provenance tracking |
-| 54-5 | [Update markdown-tasks Provider with Current-PBI Hint](./54-5.md) | Proposed | Modify provider script to emit current_pbi_id based on InProgress PBI detection |
-| 54-6 | [Integrate Resolver into PM Snapshot Pipeline](./54-6.md) | Proposed | Replace getCurrentPBI with the multi-strategy resolver in CaptureSnapshot |
-| 54-7 | [E2E CoS Test — Current-PBI Resolution](./54-7.md) | Proposed | End-to-end verification of all acceptance criteria across resolution strategies |
+| 54-1 | [Extend Type Contracts for Current-PBI Resolution](./54-1.md) | Done | Add provider hint, session metadata, and snapshot provenance fields to existing types |
+| 54-2 | [Branch-Pattern PBI Inference Utility](./54-2.md) | Done | Create utility to extract PBI ID from git branch names using configurable patterns |
+| 54-3 | [Status-Priority Heuristic for Task Groups](./54-3.md) | Done | Implement intelligent group selection based on PBI status instead of array order |
+| 54-4 | [Current-PBI Multi-Strategy Resolver](./54-4.md) | Done | Implement resolver with 5-level precedence chain and provenance tracking |
+| 54-5 | [Update markdown-tasks Provider with Current-PBI Hint](./54-5.md) | Done | Modify provider script to emit current_pbi_id based on InProgress PBI detection |
+| 54-6 | [Integrate Resolver into PM Snapshot Pipeline](./54-6.md) | Done | Replace getCurrentPBI with the multi-strategy resolver in CaptureSnapshot |
+| 54-7 | [E2E CoS Test — Current-PBI Resolution](./54-7.md) | Done | End-to-end verification of all acceptance criteria across resolution strategies |
 
 ---
 
