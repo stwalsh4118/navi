@@ -187,7 +187,9 @@ func (m Model) View() string {
 		contentHeight = 5
 	}
 
-	if m.taskPanelVisible && m.width >= previewMinTerminalWidth {
+	if m.pmViewVisible {
+		b.WriteString(m.renderPMView(m.width, contentHeight))
+	} else if m.taskPanelVisible && m.width >= previewMinTerminalWidth {
 		// Task panel layout: sessions on top, task panel on bottom
 		panelHeight := m.getTaskPanelHeight()
 		sessionListHeight := contentHeight - panelHeight - 1 // -1 for gap
@@ -555,6 +557,7 @@ func truncate(s string, maxLen int) string {
 
 // Header constant
 const headerTitle = "Claude Sessions"
+const pmHeaderTitle = "Project Manager"
 
 // renderHeader renders the header box with title, session count, and remote status.
 func (m Model) renderHeader() string {
@@ -570,7 +573,9 @@ func (m Model) renderHeader() string {
 
 	// Build count string
 	var countStr string
-	if remoteCount > 0 {
+	if m.pmViewVisible {
+		countStr = fmt.Sprintf("%d projects", len(m.sortedPMSnapshots()))
+	} else if remoteCount > 0 {
 		countStr = fmt.Sprintf("%d local, %d remote", localCount, remoteCount)
 	} else {
 		countStr = fmt.Sprintf("%d active", len(m.sessions))
@@ -619,7 +624,11 @@ func (m Model) renderHeader() string {
 	// Calculate padding for count on right
 	// Account for box border padding (1 on each side)
 	contentWidth := m.width - 4
-	leftPart := headerTitle + remoteStatus + aggregateStr
+	title := headerTitle
+	if m.pmViewVisible {
+		title = pmHeaderStyle.Render(pmHeaderTitle)
+	}
+	leftPart := title + remoteStatus + aggregateStr
 	padding := contentWidth - lipgloss.Width(leftPart) - lipgloss.Width(countStr)
 	if padding < 1 {
 		padding = 1
@@ -636,6 +645,8 @@ func (m Model) renderFooter() string {
 	if m.previewFocused {
 		// Show preview focus keybindings
 		parts = append(parts, "j/k scroll", "PgUp/PgDn page", "g/G top/bottom", "Tab/Esc back", "[/] resize", "q quit")
+	} else if m.pmViewVisible {
+		parts = append(parts, "P close", "Tab focus", "↑/↓ nav", "j/k scroll", "Space expand", "⏎ select", "q quit")
 	} else if m.taskPanelFocused {
 		// Show task panel focus keybindings
 		parts = append(parts, "↑/↓ nav", "J/K groups", "/ search", "Space expand", "e exp/coll", "a accord", "s/S sort", "f filter", "r refresh", "Tab/Esc back", "T close", "[/] resize", "q quit")
@@ -670,6 +681,9 @@ func (m Model) renderFooter() string {
 	if m.statusFilter != "" {
 		statusParts = append(statusParts, filterActiveStyle.Render("Filter: "+m.statusFilter))
 	}
+	if m.pmProjectFilterDir != "" {
+		statusParts = append(statusParts, filterActiveStyle.Render("Project: "+m.pmProjectFilterDir))
+	}
 
 	if m.hideOffline {
 		statusParts = append(statusParts, filterActiveStyle.Render("Offline: hidden"))
@@ -687,8 +701,10 @@ func (m Model) renderFooter() string {
 		statusParts = append(statusParts, filterActiveStyle.Render(countStr))
 	}
 
-	// Key hints for new features on the status line
-	statusParts = append(statusParts, dimStyle.Render("s:sort  1-5:filter  o:offline  0:clear"))
+	if !m.pmViewVisible {
+		// Key hints for new features on the status line
+		statusParts = append(statusParts, dimStyle.Render("s:sort  1-5:filter  o:offline  0:clear"))
+	}
 
 	statusLine := strings.Join(statusParts, "  ")
 	footerHelp = footerHelp + "\n" + statusLine

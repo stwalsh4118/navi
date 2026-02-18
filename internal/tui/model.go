@@ -112,10 +112,18 @@ type Model struct {
 	prAutoRefreshActive bool // Whether auto-refresh ticker is active for pending checks
 
 	// PM engine state
-	pmEngine      *pm.Engine
-	pmOutput      *pm.PMOutput
-	pmTaskResults map[string]*task.ProviderResult
-	pmRunInFlight bool
+	pmEngine              *pm.Engine
+	pmOutput              *pm.PMOutput
+	pmTaskResults         map[string]*task.ProviderResult
+	pmRunInFlight         bool
+	pmViewVisible         bool
+	pmZoneFocus           int
+	pmProjectCursor       int
+	pmProjectScrollOffset int
+	pmEventScrollOffset   int
+	pmExpandedProjects    map[string]bool
+	pmProjectFilterDir    string
+	pmLastError           string
 
 	// Content viewer state
 	contentViewerTitle      string      // Title displayed in the content viewer header
@@ -238,6 +246,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle dialog mode first - block main keybindings when dialog is open
 		if m.dialogMode != DialogNone {
 			return m.updateDialog(msg)
+		}
+
+		// Handle PM view mode before any other focused panel handlers.
+		if m.pmViewVisible {
+			return m.updatePMView(msg)
 		}
 
 		// Handle task panel focus mode - route to task panel keybindings
@@ -544,6 +557,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.clearSearchState()
 				return m, nil
 			}
+			if m.pmProjectFilterDir != "" {
+				m.pmProjectFilterDir = ""
+				m.cursor = 0
+				m.sessionScrollOffset = 0
+				return m, nil
+			}
 			// Clear active filters
 			if m.statusFilter != "" || m.hideOffline {
 				m.statusFilter = ""
@@ -639,6 +658,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
+		case "P":
+			m.togglePMView()
+			return m, nil
+
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		}
@@ -682,9 +705,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pmRunInFlight = false
 		if msg.err == nil {
 			m.pmOutput = msg.output
+			m.pmLastError = ""
 			return m, nil
 		}
-		m.err = msg.err
+		m.pmLastError = msg.err.Error()
 		return m, nil
 
 	case taskConfigsMsg:
@@ -2473,10 +2497,29 @@ func (m Model) getFilteredSessions() []session.Info {
 		result = filterOffline(result)
 	}
 
-	// Step 4: Search no longer filters — all sessions remain visible.
+	// Step 4: Project directory filter (PM view Enter jump target).
+	if m.pmProjectFilterDir != "" {
+		var filtered []session.Info
+		for _, s := range result {
+			if strings.TrimSpace(s.CWD) == "" {
+				continue
+			}
+			expanded := pathutil.ExpandPath(s.CWD)
+			abs, err := filepath.Abs(expanded)
+			if err != nil {
+				abs = expanded
+			}
+			if abs == m.pmProjectFilterDir || strings.HasPrefix(abs, m.pmProjectFilterDir+string(filepath.Separator)) {
+				filtered = append(filtered, s)
+			}
+		}
+		result = filtered
+	}
+
+	// Step 5: Search no longer filters — all sessions remain visible.
 	// Match indices are computed separately via computeSearchMatches().
 
-	// Step 5: Sort
+	// Step 6: Sort
 	result = sortSessions(result, m.sortMode)
 
 	return result
@@ -2546,6 +2589,7 @@ func InitialModel() Model {
 		lastAgentStates:     make(map[string]map[string]string),
 		pmEngine:            pm.NewEngine(),
 		pmTaskResults:       make(map[string]*task.ProviderResult),
+		pmExpandedProjects:  make(map[string]bool),
 	}
 }
 
