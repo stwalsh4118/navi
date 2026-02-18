@@ -8,14 +8,14 @@ This document lists all tasks associated with PBI 48.
 
 | Task ID | Name | Status | Description |
 | :------ | :--- | :----- | :---------- |
-| 48-1 | [PM Briefing Types and Embedded Templates](./48-1.md) | Proposed | Define PMBriefing, AttentionItem, Breadcrumb, InboxPayload types; embed system-prompt.md and output-schema.json templates; add TriggerType constants |
-| 48-2 | [PM Storage Initialization and Session Management](./48-2.md) | Proposed | Create EnsureStorageLayout(), IsFirstRun(), ReadSessionID/WriteSessionID; seed memory file templates on first run |
-| 48-3 | [Inbox Construction](./48-3.md) | Proposed | Build JSON inbox payload combining accumulated events, project snapshots, trigger type, and timestamp for Claude invocation |
-| 48-4 | [Claude CLI Invoker Core](./48-4.md) | Proposed | Implement exec.Command wrapper for `claude -p` with first-run vs --resume flow, session ID capture, and CLI flag assembly |
-| 48-5 | [Output Parsing and Caching](./48-5.md) | Proposed | Parse Claude's structured_output JSON into PMBriefing struct; cache to last-output.json; load cached output with staleness tracking |
-| 48-6 | [Error Recovery and Resilience](./48-6.md) | Proposed | Handle non-zero exit, unparseable JSON, corrupted --resume session, and rate limiting with fallback and backoff strategies |
-| 48-7 | [Trigger System and TUI Integration](./48-7.md) | Proposed | Wire trigger evaluation (task_completed, commit, on_demand) into TUI message loop; async goroutine invocation; event accumulation between invocations |
-| 48-8 | [E2E CoS Test](./48-8.md) | Proposed | End-to-end verification of all 10 acceptance criteria for PM agent initialization, invocation, output, triggers, error recovery, and async behavior |
+| 48-1 | [PM Briefing Types and Embedded Templates](./48-1.md) | Done | Define PMBriefing, AttentionItem, Breadcrumb, InboxPayload types; embed system-prompt.md and output-schema.json templates; add TriggerType constants |
+| 48-2 | [PM Storage Initialization and Session Management](./48-2.md) | Done | Create EnsureStorageLayout(); seed memory file templates; manage storage directory layout |
+| 48-3 | [Inbox Construction](./48-3.md) | Done | Build JSON inbox payload combining accumulated events, project snapshots, trigger type, and timestamp for Claude invocation |
+| 48-4 | [Claude CLI Invoker Core](./48-4.md) | Done | Implement exec.Command wrapper for `claude -p` with fresh sessions, streaming, model selection, and CLI flag assembly |
+| 48-5 | [Output Parsing and Caching](./48-5.md) | Done | Parse Claude's structured_output JSON into PMBriefing struct; cache to last-output.json; load cached output with staleness tracking |
+| 48-6 | [Error Recovery and Resilience](./48-6.md) | Done | Handle non-zero exit, unparseable JSON, and rate limiting with fallback and backoff strategies |
+| 48-7 | [Trigger System and TUI Integration](./48-7.md) | Done | Wire trigger evaluation (task_completed, commit, on_demand) into TUI message loop; async goroutine invocation; streaming status; cached briefing on startup |
+| 48-8 | [E2E CoS Test](./48-8.md) | Done | End-to-end verification of acceptance criteria for PM agent initialization, invocation, output, triggers, error recovery, and async behavior |
 
 ## Dependency Graph
 
