@@ -12,7 +12,7 @@ import (
 	"github.com/stwalsh4118/navi/internal/task"
 )
 
-const pmPollInterval = 60 * time.Second
+const pmPollInterval = 5 * time.Minute
 
 // pmTriggerEvents are event types that trigger a PM invocation.
 var pmTriggerEvents = map[pm.EventType]pm.TriggerType{
