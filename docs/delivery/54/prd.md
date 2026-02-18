@@ -57,4 +57,4 @@ The PM snapshot currently infers current PBI from the first task group returned 
 
 ## Related Tasks
 
-_Tasks will be created when this PBI is approved via `/plan-pbi 54`._
+[View Tasks](./tasks.md)

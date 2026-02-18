@@ -843,3 +843,61 @@ func TestExternalAgentJSONBehavior(t *testing.T) {
 		}
 	})
 }
+
+func TestCurrentPBIJSONBehavior(t *testing.T) {
+	t.Run("round-trip preserves current pbi fields", func(t *testing.T) {
+		info := Info{
+			TmuxSession:     "test-session",
+			Status:          StatusWorking,
+			CWD:             "/tmp/project",
+			CurrentPBI:      "PBI-54",
+			CurrentPBITitle: "Session-Scoped Current PBI Resolution for PM View",
+			Timestamp:       1234567890,
+		}
+
+		data, err := json.Marshal(info)
+		if err != nil {
+			t.Fatalf("Marshal failed: %v", err)
+		}
+
+		if !strings.Contains(string(data), `"current_pbi":"PBI-54"`) {
+			t.Fatalf("marshaled JSON missing current_pbi: %s", string(data))
+		}
+		if !strings.Contains(string(data), `"current_pbi_title":"Session-Scoped Current PBI Resolution for PM View"`) {
+			t.Fatalf("marshaled JSON missing current_pbi_title: %s", string(data))
+		}
+
+		var decoded Info
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			t.Fatalf("Unmarshal failed: %v", err)
+		}
+
+		if decoded.CurrentPBI != info.CurrentPBI {
+			t.Errorf("CurrentPBI = %q, want %q", decoded.CurrentPBI, info.CurrentPBI)
+		}
+		if decoded.CurrentPBITitle != info.CurrentPBITitle {
+			t.Errorf("CurrentPBITitle = %q, want %q", decoded.CurrentPBITitle, info.CurrentPBITitle)
+		}
+	})
+
+	t.Run("omitempty excludes empty current pbi fields", func(t *testing.T) {
+		info := Info{
+			TmuxSession: "test-session",
+			Status:      StatusWorking,
+			CWD:         "/tmp/project",
+			Timestamp:   1234567890,
+		}
+
+		data, err := json.Marshal(info)
+		if err != nil {
+			t.Fatalf("Marshal failed: %v", err)
+		}
+
+		if strings.Contains(string(data), `"current_pbi"`) {
+			t.Fatalf("marshaled JSON should not contain current_pbi when empty: %s", string(data))
+		}
+		if strings.Contains(string(data), `"current_pbi_title"`) {
+			t.Fatalf("marshaled JSON should not contain current_pbi_title when empty: %s", string(data))
+		}
+	})
+}

@@ -11,14 +11,15 @@ func TestPMOutputJSONRoundTrip(t *testing.T) {
 
 	original := PMOutput{
 		Snapshots: []ProjectSnapshot{{
-			ProjectName:     "navi",
-			ProjectDir:      "/tmp/navi",
-			HeadSHA:         "0123456789abcdef0123456789abcdef01234567",
-			Branch:          "main",
-			CommitsAhead:    2,
-			Dirty:           true,
-			CurrentPBIID:    "46",
-			CurrentPBITitle: "PM Engine",
+			ProjectName:      "navi",
+			ProjectDir:       "/tmp/navi",
+			HeadSHA:          "0123456789abcdef0123456789abcdef01234567",
+			Branch:           "main",
+			CommitsAhead:     2,
+			Dirty:            true,
+			CurrentPBIID:     "46",
+			CurrentPBITitle:  "PM Engine",
+			CurrentPBISource: "provider_hint",
 			TaskCounts: TaskCounts{
 				Total:      6,
 				Done:       3,

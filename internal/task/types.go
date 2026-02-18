@@ -20,18 +20,21 @@ type Task struct {
 
 // TaskGroup represents a group of related tasks (e.g., PBI, epic, milestone).
 type TaskGroup struct {
-	ID     string `json:"id"`
-	Title  string `json:"title"`
-	Status string `json:"status,omitempty"`
-	URL    string `json:"url,omitempty"`
-	Tasks  []Task `json:"tasks"`
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Status    string `json:"status,omitempty"`
+	URL       string `json:"url,omitempty"`
+	IsCurrent bool   `json:"is_current,omitempty"`
+	Tasks     []Task `json:"tasks"`
 }
 
 // ProviderResult is the top-level JSON output from a provider script.
 // It supports both grouped format (groups array) and flat format (tasks array).
 type ProviderResult struct {
-	Groups []TaskGroup `json:"groups,omitempty"`
-	Tasks  []Task      `json:"tasks,omitempty"`
+	CurrentPBIID    string      `json:"current_pbi_id,omitempty"`
+	CurrentPBITitle string      `json:"current_pbi_title,omitempty"`
+	Groups          []TaskGroup `json:"groups,omitempty"`
+	Tasks           []Task      `json:"tasks,omitempty"`
 }
 
 // ParseProviderOutput parses raw JSON bytes from a provider script into a ProviderResult.

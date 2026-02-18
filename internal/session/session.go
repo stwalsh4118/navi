@@ -67,16 +67,18 @@ type ExternalAgent struct {
 
 // Info represents the status data for a single Claude Code session.
 type Info struct {
-	TmuxSession string                   `json:"tmux_session"`
-	Status      string                   `json:"status"`
-	Message     string                   `json:"message"`
-	CWD         string                   `json:"cwd"`
-	Timestamp   int64                    `json:"timestamp"`
-	Git         *git.Info                `json:"git,omitempty"`
-	Remote      string                   `json:"remote,omitempty"`
-	Metrics     *metrics.Metrics         `json:"metrics,omitempty"`
-	Team        *TeamInfo                `json:"team,omitempty"`
-	Agents      map[string]ExternalAgent `json:"agents,omitempty"`
+	TmuxSession     string                   `json:"tmux_session"`
+	Status          string                   `json:"status"`
+	Message         string                   `json:"message"`
+	CWD             string                   `json:"cwd"`
+	CurrentPBI      string                   `json:"current_pbi,omitempty"`
+	CurrentPBITitle string                   `json:"current_pbi_title,omitempty"`
+	Timestamp       int64                    `json:"timestamp"`
+	Git             *git.Info                `json:"git,omitempty"`
+	Remote          string                   `json:"remote,omitempty"`
+	Metrics         *metrics.Metrics         `json:"metrics,omitempty"`
+	Team            *TeamInfo                `json:"team,omitempty"`
+	Agents          map[string]ExternalAgent `json:"agents,omitempty"`
 }
 
 // FilterMode represents the session filter state.

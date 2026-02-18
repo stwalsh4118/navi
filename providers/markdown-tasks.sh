@@ -55,6 +55,15 @@ trim() {
   echo "$s"
 }
 
+normalize_status() {
+  local status="$1"
+  status="${status,,}"
+  status="${status//[[:space:]]/}"
+  status="${status//_/}"
+  status="${status//-/}"
+  echo "$status"
+}
+
 # ── helper: extract link text from markdown link ─────────────────────
 # Given "[Some Text](./path.md)", returns "Some Text"
 # If no link, returns the input as-is.
@@ -138,6 +147,28 @@ if [[ "$backlog_found" == false ]]; then
   exit 1
 fi
 
+# Identify current PBI hint: first InProgress, then first Agreed.
+current_pbi_id=""
+current_pbi_title=""
+
+for pbi_id in "${pbi_ids[@]}"; do
+  normalized_status="$(normalize_status "${pbi_statuses[$pbi_id]}")"
+  if [[ "$normalized_status" == "inprogress" ]]; then
+    current_pbi_id="$pbi_id"
+    break
+  fi
+done
+
+if [[ -z "$current_pbi_id" ]]; then
+  for pbi_id in "${pbi_ids[@]}"; do
+    normalized_status="$(normalize_status "${pbi_statuses[$pbi_id]}")"
+    if [[ "$normalized_status" == "agreed" ]]; then
+      current_pbi_id="$pbi_id"
+      break
+    fi
+  done
+fi
+
 # ── parse tasks for each PBI ─────────────────────────────────────────
 
 # Build a JSON array of groups
@@ -215,16 +246,27 @@ for pbi_id in "${pbi_ids[@]}"; do
     prd_title="${pbi_titles[$pbi_id]}"
   fi
 
+  is_current=false
+  if [[ -n "$current_pbi_id" && "$pbi_id" == "$current_pbi_id" ]]; then
+    is_current=true
+    current_pbi_title="$prd_title"
+  fi
+
   # Build group JSON and append to groups array
   group_obj="$(jq -n \
     --arg id "PBI-$pbi_id" \
     --arg title "$prd_title" \
     --arg status "${pbi_statuses[$pbi_id]}" \
     --argjson tasks "$tasks_json" \
-    '{id: $id, title: $title, status: $status, tasks: $tasks}')"
+    --argjson is_current "$is_current" \
+    '{id: $id, title: $title, status: $status, tasks: $tasks} + (if $is_current then {is_current: true} else {} end)')"
 
   groups_json="$(echo "$groups_json" | jq --argjson obj "$group_obj" '. + [$obj]')"
 done
 
 # ── output final JSON ────────────────────────────────────────────────
-echo "$groups_json" | jq '{groups: .}'
+jq -n \
+  --argjson groups "$groups_json" \
+  --arg current_pbi_id "$current_pbi_id" \
+  --arg current_pbi_title "$current_pbi_title" \
+  '{groups: $groups} + (if $current_pbi_id != "" then {current_pbi_id: ("PBI-" + $current_pbi_id), current_pbi_title: $current_pbi_title} else {} end)'

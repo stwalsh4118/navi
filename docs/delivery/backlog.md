@@ -40,13 +40,13 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 32 | User | As a user, I want all TUI panels to scroll their content so that I can see all items even when the panel is too short to display everything | Done | [View Details](./32/prd.md) |
 | 33 | User | As a user, I want the TUI to correctly handle agent team sessions and show inline team status so that I can monitor multi-agent workflows and the dashboard remains accurate | Done | [View Details](./33/prd.md) |
 | 34 | User | As a user, I want enhanced session creation with shell-only mode, directory tab-completion, clone session, and attach-after-create so that session setup is faster and more flexible | Proposed | [View Details](./34/prd.md) |
-| 35 | User | As a user, I want built-in provider scripts embedded in the binary, custom providers loaded from ~/.config/navi/providers/, and all config consolidated under ~/.config/navi/ so that navi works reliably from anywhere with a single config directory | Agreed | [View Details](./35/prd.md) |
+| 35 | User | As a user, I want built-in provider scripts embedded in the binary, custom providers loaded from ~/.config/navi/providers/, and all config consolidated under ~/.config/navi/ so that navi works reliably from anywhere with a single config directory | Proposed | [View Details](./35/prd.md) |
 | 36 | User | As a user, I want navi to build and run on Windows with platform-appropriate paths and graceful degradation for Unix-only features so that I can use navi across operating systems | Proposed | [View Details](./36/prd.md) |
 | 37 | User | As a user, I want sorting, filtering, progress indicators, summary stats, and improved navigation in the task view so that I can efficiently manage a large backlog | Done | [View Details](./37/prd.md) |
-| 38 | User | As a user, I want enhanced GitHub PR integration with CI/CD check statuses, review state, comments, labels, draft/merge status, and change stats so that I have full PR context without leaving the TUI | Agreed | [View Details](./38/prd.md) |
+| 38 | User | As a user, I want enhanced GitHub PR integration with CI/CD check statuses, review state, comments, labels, draft/merge status, and change stats so that I have full PR context without leaving the TUI | Done | [View Details](./38/prd.md) |
 | 39 | User | As a user, I want remote sessions to have full lifecycle parity with local sessions (stale cleanup, TUI creation, responsive status updates) so that managing remote sessions feels identical to local ones | Proposed | [View Details](./39/prd.md) |
-| 40 | User | As a user, I want OpenCode to push status updates to navi via its plugin system so that navi can track OpenCode sessions alongside Claude Code | Agreed | [View Details](./40/prd.md) |
-| 41 | User | As a user, I want the TUI to show per-agent status indicators for each session so that I can see both Claude Code and OpenCode state at a glance | Agreed | [View Details](./41/prd.md) |
+| 40 | User | As a user, I want OpenCode to push status updates to navi via its plugin system so that navi can track OpenCode sessions alongside Claude Code | Done | [View Details](./40/prd.md) |
+| 41 | User | As a user, I want the TUI to show per-agent status indicators for each session so that I can see both Claude Code and OpenCode state at a glance | Done | [View Details](./41/prd.md) |
 | 42 | User | As a user, I want configurable audio notifications with custom sound files and TTS session name announcements when session statuses change so that I have audio awareness without watching the TUI | Done | [View Details](./42/prd.md) |
 | 43 | User | As a user, I want tmux sessions embedded inside the Navi UI with a status bar so that polling, notifications, and audio alerts continue working while I interact with a session | Proposed | [View Details](./43/prd.md) |
 | 44 | User | As a user, I want audio notifications to continue and session status visible in the tmux status bar while attached to a session so that I stay aware without detaching | Done | [View Details](./44/prd.md) |
@@ -59,7 +59,8 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 51 | Developer | As a developer, I want to ask the PM questions from the TUI so that I can interrogate its knowledge about my projects conversationally | Proposed | [View Details](./51/prd.md) |
 | 52 | Developer | As a developer, I want to register projects in config for tracking without active sessions so that the PM has full portfolio awareness | Proposed | [View Details](./52/prd.md) |
 | 53 | User | As a user, I want the session status icon and message to reflect the aggregate state of all agents so that external agents like OpenCode are first-class citizens in the display | Done | [View Details](./53/prd.md) |
-| 54 | Developer | As a developer, I want PM current-PBI detection to use session-scoped signals plus provider hints so that each active session maps to the correct PBI even during concurrent work | Proposed | [View Details](./54/prd.md) |
+| 54 | Developer | As a developer, I want PM current-PBI detection to use session-scoped signals plus provider hints so that each active session maps to the correct PBI even during concurrent work | Done | [View Details](./54/prd.md) |
+| 55 | User | As a user, I want PM project status to refresh immediately with visible loading feedback and faster provider updates so that pressing P feels responsive and trustworthy | Proposed | [View Details](./55/prd.md) |
 
 ## History Log
 
@@ -178,3 +179,14 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 2026-02-17 10:41:25 | 47 | Status Change | Proposed → Agreed - User approved for task breakdown | User |
 | 20260217-234743 | 47 | Status Change | Agreed → Done - All 6 tasks Done, PM TUI three-zone view implemented and verified | AI_Agent |
 | 20260217-133155 | 54 | Created | PBI created from feature request: session-scoped current PBI detection with provider hint integration | AI_Agent |
+| 2026-02-18 00:45:39 | 54 | Status Change | Proposed → Agreed - User approved for task breakdown | User |
+| 2026-02-18 01:54:10 | 54 | Status Change | Agreed → InProgress - Started implementation | AI_Agent |
+| 20260218-020331 | 55 | Created | PBI created from feature request: PM refresh responsiveness, loading indicator, and provider performance improvements | AI_Agent |
+| 2026-02-18 02:11:13 | 35 | Status Change | Agreed → Proposed - Reverted to pre-Agreed state per user request | AI_Agent |
+| 2026-02-18 02:11:13 | 38 | Status Change | Agreed → Done - Marked done per user request | AI_Agent |
+| 2026-02-18 02:11:13 | 40 | Status Change | Agreed → Done - Marked done per user request | AI_Agent |
+| 2026-02-18 02:11:13 | 41 | Status Change | Agreed → Done - Marked done per user request | AI_Agent |
+| 2026-02-18 02:19:42 | 54 | Status Change | InProgress → Done - All 7 tasks Done, verification complete, and implementation finalized | AI_Agent |
+| 2026-02-18 06:25:05 | 54 | Status Change | Done → Agreed - Added follow-up task 54-8 for provider-agnostic branch ID resolution from PR review feedback | AI_Agent |
+| 2026-02-18 07:17:04 | 54 | Status Change | Agreed → InProgress - Started implementation of task 54-8 follow-up | AI_Agent |
+| 2026-02-18 07:39:37 | 54 | Status Change | InProgress → Done - Task 54-8 approved and completed | AI_Agent |
