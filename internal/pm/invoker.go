@@ -195,11 +195,15 @@ func (i *Invoker) runStreaming(ctx context.Context, cmd *exec.Cmd, stream chan<-
 			resultLine = append([]byte(nil), line...)
 		}
 		// Capture assistant text blocks that look like JSON briefings.
-		if textContent != "" && len(textContent) > 0 && textContent[0] == '{' {
+		if textContent != "" && textContent[0] == '{' {
 			candidateJSON = []byte(textContent)
 			debug.Log("pm: captured candidate JSON (%d bytes)", len(candidateJSON))
 		}
 		sendStatus(status)
+	}
+
+	if err := scanner.Err(); err != nil {
+		debug.Log("pm: scanner error: %v", err)
 	}
 
 	waitErr := cmd.Wait()
