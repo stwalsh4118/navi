@@ -71,6 +71,26 @@ func TestResolveCurrentPBI_AcceptanceCriteriaScenarios(t *testing.T) {
 			want:   "branch_pattern",
 		},
 		{
+			name: "branch pattern maps numeric token to non-pbi provider id",
+			input: ResolverInput{
+				ProjectDir: projectDir,
+				Branch:     "feature/pbi-54-desc",
+				TaskResult: &task.ProviderResult{Groups: []task.TaskGroup{{ID: "ISSUE-54", Title: "Resolver", Status: "Done"}}},
+			},
+			wantID: "ISSUE-54",
+			want:   "branch_pattern",
+		},
+		{
+			name: "branch pattern infers non-pbi prefix when no exact id match",
+			input: ResolverInput{
+				ProjectDir: projectDir,
+				Branch:     "feature/pbi-77-desc",
+				TaskResult: &task.ProviderResult{Groups: []task.TaskGroup{{ID: "ISSUE-54", Title: "Resolver", Status: "Done"}}},
+			},
+			wantID: "ISSUE-77",
+			want:   "branch_pattern",
+		},
+		{
 			name: "status heuristic wins when no explicit signals",
 			input: ResolverInput{
 				ProjectDir: projectDir,

@@ -133,9 +133,145 @@ func resolveFromBranchPattern(branch string, patterns []string, taskResult *task
 		return ResolverResult{}, false
 	}
 
-	formattedPBIID := fmt.Sprintf("PBI-%s", branchPBIID)
-	title := findTitleByPBIID(taskResult, formattedPBIID)
-	return ResolverResult{PBIID: formattedPBIID, Title: title, Source: "branch_pattern"}, true
+	resolvedID := resolveBranchInferredID(branchPBIID, taskResult)
+	title := findTitleByPBIID(taskResult, resolvedID)
+	return ResolverResult{PBIID: resolvedID, Title: title, Source: "branch_pattern"}, true
+}
+
+func resolveBranchInferredID(inferredID string, taskResult *task.ProviderResult) string {
+	trimmedInferred := strings.TrimSpace(inferredID)
+	if trimmedInferred == "" {
+		return ""
+	}
+
+	isNumeric := isDigitsOnly(trimmedInferred)
+	bestNumericSuffixMatch := ""
+
+	if taskResult != nil {
+		for _, group := range taskResult.Groups {
+			groupID := strings.TrimSpace(group.ID)
+			if groupID == "" {
+				continue
+			}
+
+			if strings.EqualFold(groupID, trimmedInferred) {
+				return group.ID
+			}
+
+			if !isNumeric {
+				continue
+			}
+
+			if bestNumericSuffixMatch == "" && hasNumericSuffix(groupID, trimmedInferred) {
+				bestNumericSuffixMatch = group.ID
+			}
+		}
+	}
+
+	if bestNumericSuffixMatch != "" {
+		return bestNumericSuffixMatch
+	}
+
+	if isNumeric {
+		if numericPrefix := inferNumericIDPrefix(taskResult); numericPrefix != "" {
+			return fmt.Sprintf("%s%s", numericPrefix, trimmedInferred)
+		}
+		return trimmedInferred
+	}
+
+	return trimmedInferred
+}
+
+func isDigitsOnly(value string) bool {
+	if value == "" {
+		return false
+	}
+
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+
+	return true
+}
+
+func hasNumericSuffix(value string, suffix string) bool {
+	trimmedValue := strings.TrimSpace(value)
+	if trimmedValue == "" || suffix == "" {
+		return false
+	}
+
+	if !strings.HasSuffix(trimmedValue, suffix) {
+		return false
+	}
+
+	prefixLength := len(trimmedValue) - len(suffix)
+	if prefixLength <= 0 {
+		return false
+	}
+
+	separator := trimmedValue[prefixLength-1]
+	return separator == '-' || separator == '_' || separator == '/' || separator == '#'
+}
+
+func inferNumericIDPrefix(taskResult *task.ProviderResult) string {
+	if taskResult == nil {
+		return ""
+	}
+
+	prefixCounts := make(map[string]int)
+	orderedPrefixes := make([]string, 0)
+
+	for _, group := range taskResult.Groups {
+		prefix, ok := numericIDSuffixPrefix(group.ID)
+		if !ok {
+			continue
+		}
+		if _, exists := prefixCounts[prefix]; !exists {
+			orderedPrefixes = append(orderedPrefixes, prefix)
+		}
+		prefixCounts[prefix]++
+	}
+
+	bestPrefix := ""
+	bestCount := 0
+	for _, prefix := range orderedPrefixes {
+		count := prefixCounts[prefix]
+		if count > bestCount {
+			bestCount = count
+			bestPrefix = prefix
+		}
+	}
+
+	return bestPrefix
+}
+
+func numericIDSuffixPrefix(value string) (string, bool) {
+	trimmedValue := strings.TrimSpace(value)
+	if trimmedValue == "" {
+		return "", false
+	}
+
+	i := len(trimmedValue) - 1
+	for i >= 0 {
+		if trimmedValue[i] < '0' || trimmedValue[i] > '9' {
+			break
+		}
+		i--
+	}
+
+	digitStart := i + 1
+	if digitStart <= 0 || digitStart >= len(trimmedValue) {
+		return "", false
+	}
+
+	separator := trimmedValue[digitStart-1]
+	if separator != '-' && separator != '_' && separator != '/' && separator != '#' {
+		return "", false
+	}
+
+	return trimmedValue[:digitStart], true
 }
 
 func firstGroupFallback(groups []task.TaskGroup) (string, string, bool) {

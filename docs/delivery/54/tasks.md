@@ -15,6 +15,7 @@ This document lists all tasks associated with PBI 54.
 | 54-5 | [Update markdown-tasks Provider with Current-PBI Hint](./54-5.md) | Done | Modify provider script to emit current_pbi_id based on InProgress PBI detection |
 | 54-6 | [Integrate Resolver into PM Snapshot Pipeline](./54-6.md) | Done | Replace getCurrentPBI with the multi-strategy resolver in CaptureSnapshot |
 | 54-7 | [E2E CoS Test — Current-PBI Resolution](./54-7.md) | Done | End-to-end verification of all acceptance criteria across resolution strategies |
+| 54-8 | [Provider-Agnostic Branch ID Resolution](./54-8.md) | Done | Remove hardcoded PBI- prefix in branch strategy and resolve inferred IDs against provider group formats |
 
 ---
 
@@ -29,6 +30,9 @@ This document lists all tasks associated with PBI 54.
 54-2 ───┤
 54-3 ───┼──→ 54-4 (Resolver) ──→ 54-6 (Pipeline Integration) ──→ 54-7 (E2E CoS Test)
 54-5 ───┘
+
+54-7 (Baseline coverage)
+  └──→ 54-8 (Follow-up hardening for provider-agnostic branch ID resolution)
 ```
 
 ## Implementation Order
@@ -40,6 +44,7 @@ This document lists all tasks associated with PBI 54.
 5. **54-4** — Resolver (depends on 54-1, 54-2, 54-3 for all strategies)
 6. **54-6** — Pipeline integration (depends on 54-4 for resolver function)
 7. **54-7** — E2E CoS test (depends on all tasks being complete)
+8. **54-8** — Follow-up resolver hardening (depends on 54-4/54-7 baseline resolver behavior and test structure)
 
 ## Complexity Ratings
 
@@ -52,6 +57,7 @@ This document lists all tasks associated with PBI 54.
 | 54-5 | Simple | None |
 | 54-6 | Medium | None |
 | 54-7 | Medium | None |
+| 54-8 | Medium | None |
 
 ## External Package Research Required
 

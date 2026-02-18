@@ -155,10 +155,52 @@ func TestResolveCurrentPBI(t *testing.T) {
 		}
 	})
 
+	t.Run("strategy3 branch pattern maps to provider-specific id prefix", func(t *testing.T) {
+		taskResult := &task.ProviderResult{Groups: []task.TaskGroup{
+			{ID: "ISSUE-54", Title: "Issue Fifty Four", Status: "InProgress"},
+			{ID: "ISSUE-10", Title: "Issue Ten", Status: "Done"},
+		}}
+
+		result := ResolveCurrentPBI(ResolverInput{TaskResult: taskResult, ProjectDir: projectDir, Branch: "feature/pbi-54-desc"})
+		if result.PBIID != "ISSUE-54" || result.Title != "Issue Fifty Four" || result.Source != "branch_pattern" {
+			t.Fatalf("branch provider prefix mapping failed: %+v", result)
+		}
+	})
+
+	t.Run("strategy3 branch pattern infers provider prefix on numeric fallback", func(t *testing.T) {
+		taskResult := &task.ProviderResult{Groups: []task.TaskGroup{
+			{ID: "ISSUE-54", Title: "Issue Fifty Four", Status: "InProgress"},
+			{ID: "ISSUE-10", Title: "Issue Ten", Status: "Done"},
+		}}
+
+		result := ResolveCurrentPBI(ResolverInput{TaskResult: taskResult, ProjectDir: projectDir, Branch: "feature/pbi-77-desc"})
+		if result.PBIID != "ISSUE-77" || result.Title != "" || result.Source != "branch_pattern" {
+			t.Fatalf("branch provider prefix fallback failed: %+v", result)
+		}
+	})
+
 	t.Run("strategy3 branch pattern without group match", func(t *testing.T) {
 		result := ResolveCurrentPBI(ResolverInput{TaskResult: baseTaskResult, ProjectDir: projectDir, Branch: "feature/pbi-77-desc"})
 		if result.PBIID != "PBI-77" || result.Title != "" || result.Source != "branch_pattern" {
 			t.Fatalf("branch no-match title strategy failed: %+v", result)
+		}
+	})
+
+	t.Run("strategy3 branch pattern preserves non-numeric inferred id", func(t *testing.T) {
+		result := ResolveCurrentPBI(ResolverInput{
+			ProjectDir:     projectDir,
+			Branch:         "feature/story-42-desc",
+			BranchPatterns: []string{`feature/(story-\d+)-`},
+		})
+		if result.PBIID != "story-42" || result.Title != "" || result.Source != "branch_pattern" {
+			t.Fatalf("branch non-numeric id strategy failed: %+v", result)
+		}
+	})
+
+	t.Run("strategy3 branch pattern numeric fallback without groups returns raw token", func(t *testing.T) {
+		result := ResolveCurrentPBI(ResolverInput{ProjectDir: projectDir, Branch: "feature/pbi-77-desc"})
+		if result.PBIID != "77" || result.Title != "" || result.Source != "branch_pattern" {
+			t.Fatalf("branch raw numeric fallback strategy failed: %+v", result)
 		}
 	})
 
