@@ -2,6 +2,7 @@ package tui
 
 import (
 	"strings"
+	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -13,6 +14,8 @@ import (
 const (
 	// taskDefaultRefreshInterval is how often task data is refreshed.
 	taskDefaultRefreshInterval = 60 * time.Second
+	// maxProviderConcurrency bounds parallel provider execution during refresh.
+	maxProviderConcurrency = 4
 )
 
 // tasksMsg carries refreshed task data from provider execution.
@@ -37,31 +40,83 @@ func taskRefreshCmd(configs []task.ProjectConfig, cache *task.ResultCache, globa
 		errors := make(map[string]error)
 		resultsByProject := make(map[string]*task.ProviderResult)
 
+		type providerExecResult struct {
+			index  int
+			cfg    task.ProjectConfig
+			result *task.ProviderResult
+			err    error
+		}
+
+		uncachedConfigs := make([]task.ProjectConfig, 0, len(configs))
+		seenProjects := make(map[string]bool, len(configs))
+
 		for _, cfg := range configs {
+			if seenProjects[cfg.ProjectDir] {
+				continue
+			}
+			seenProjects[cfg.ProjectDir] = true
+
 			// Check cache first
-			if cached, ok := cache.Get(cfg.ProjectDir, taskDefaultRefreshInterval); ok {
-				if cached.Error != nil {
-					errors[cfg.ProjectDir] = cached.Error
-				} else if cached.Result != nil {
-					groups := normalizeGroups(cached.Result, cfg, globalConfig)
-					groupsByProject[cfg.ProjectDir] = groups
-					resultsByProject[cfg.ProjectDir] = cached.Result
+			if cache != nil {
+				if cached, ok := cache.Get(cfg.ProjectDir, taskDefaultRefreshInterval); ok {
+					if cached.Error != nil {
+						errors[cfg.ProjectDir] = cached.Error
+					} else if cached.Result != nil {
+						groups := normalizeGroups(cached.Result, cfg, globalConfig)
+						groupsByProject[cfg.ProjectDir] = groups
+						resultsByProject[cfg.ProjectDir] = cached.Result
+					}
+					continue
 				}
-				continue
 			}
 
-			// Execute provider
-			result, err := task.ExecuteProvider(cfg, timeout)
-			cache.Set(cfg.ProjectDir, result, err)
+			uncachedConfigs = append(uncachedConfigs, cfg)
+		}
 
-			if err != nil {
-				errors[cfg.ProjectDir] = err
-				continue
+		if len(uncachedConfigs) > 0 {
+			semaphore := make(chan struct{}, maxProviderConcurrency)
+			resultCh := make(chan providerExecResult, len(uncachedConfigs))
+			var wg sync.WaitGroup
+
+			for idx, cfg := range uncachedConfigs {
+				wg.Add(1)
+				go func(index int, projectCfg task.ProjectConfig) {
+					defer wg.Done()
+					semaphore <- struct{}{}
+					result, err := task.ExecuteProvider(projectCfg, timeout)
+					<-semaphore
+
+					if cache != nil {
+						cache.Set(projectCfg.ProjectDir, result, err)
+					}
+
+					resultCh <- providerExecResult{
+						index:  index,
+						cfg:    projectCfg,
+						result: result,
+						err:    err,
+					}
+				}(idx, cfg)
 			}
 
-			groups := normalizeGroups(result, cfg, globalConfig)
-			groupsByProject[cfg.ProjectDir] = groups
-			resultsByProject[cfg.ProjectDir] = result
+			wg.Wait()
+			close(resultCh)
+
+			execResults := make([]providerExecResult, len(uncachedConfigs))
+			for execResult := range resultCh {
+				execResults[execResult.index] = execResult
+			}
+
+			for _, execResult := range execResults {
+				if execResult.err != nil {
+					errors[execResult.cfg.ProjectDir] = execResult.err
+					continue
+				}
+
+				groups := normalizeGroups(execResult.result, execResult.cfg, globalConfig)
+				groupsByProject[execResult.cfg.ProjectDir] = groups
+				resultsByProject[execResult.cfg.ProjectDir] = execResult.result
+			}
 		}
 
 		return tasksMsg{groupsByProject: groupsByProject, errors: errors, resultsByProject: resultsByProject}
