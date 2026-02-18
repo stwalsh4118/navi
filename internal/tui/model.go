@@ -660,8 +660,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "P":
-			m.togglePMView()
-			return m, nil
+			return m, m.togglePMView()
 
 		case "q", "ctrl+c":
 			return m, tea.Quit

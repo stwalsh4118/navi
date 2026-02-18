@@ -12,6 +12,7 @@ import (
 	ansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/stwalsh4118/navi/internal/pm"
+	"github.com/stwalsh4118/navi/internal/task"
 )
 
 const (
@@ -25,12 +26,13 @@ const (
 	pmVeryShortTerminalHeight = 15
 	pmNarrowWidthThreshold    = 100
 	pmEventPageScrollAmt      = 8
+	pmRefreshingLabel         = "Refreshing..."
 )
 
-func (m *Model) togglePMView() {
+func (m *Model) togglePMView() tea.Cmd {
 	if m.pmViewVisible {
 		m.pmViewVisible = false
-		return
+		return nil
 	}
 
 	m.pmViewVisible = true
@@ -51,6 +53,13 @@ func (m *Model) togglePMView() {
 	m.previewContent = ""
 
 	m.clearSearchState()
+
+	if m.pmEngine == nil || m.pmRunInFlight {
+		return nil
+	}
+
+	m.pmRunInFlight = true
+	return pmRunCmd(m.pmEngine, m.sessions, m.pmTaskResults)
 }
 
 func (m Model) updatePMView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -60,6 +69,18 @@ func (m Model) updatePMView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "P", "esc":
 		m.pmViewVisible = false
 		return m, nil
+	case "r":
+		if m.pmRunInFlight || m.pmEngine == nil {
+			return m, nil
+		}
+		if m.taskCache != nil {
+			m.taskCache.InvalidateAll()
+		}
+		m.pmRunInFlight = true
+		return m, tea.Batch(
+			taskRefreshCmd(m.taskProjectConfigs, m.taskCache, m.taskGlobalConfig, task.DefaultProviderTimeout),
+			pmRunCmd(m.pmEngine, m.sessions, m.pmTaskResults),
+		)
 	case "tab":
 		if m.pmZoneFocus == pmZoneProjects {
 			m.pmZoneFocus = pmZoneEvents
@@ -250,12 +271,26 @@ func (m Model) renderPMBriefing(width, height int) string {
 	if m.pmLastError != "" {
 		placeholder = redStyle.Render("PM refresh error: " + m.pmLastError)
 	}
+	loading := ""
+	if m.pmRunInFlight {
+		loading = dimStyle.Render(italicStyle.Render(pmRefreshingLabel))
+	}
 	if height <= 1 {
+		if loading != "" {
+			return lipgloss.NewStyle().Width(width).Align(lipgloss.Center).Render(loading)
+		}
 		return lipgloss.NewStyle().Width(width).Align(lipgloss.Center).Render(placeholder)
 	}
 	contentHeight := height - 2
 	if contentHeight < 1 {
 		contentHeight = 1
+	}
+	if loading != "" {
+		if contentHeight > 1 {
+			placeholder = loading + "\n" + placeholder
+		} else {
+			placeholder = loading
+		}
 	}
 	content := lipgloss.NewStyle().Width(width-4).Height(contentHeight).Align(lipgloss.Center, lipgloss.Center).Render(placeholder)
 	return pmBoxStyle.Width(width - 2).Render(content)
