@@ -8,11 +8,11 @@ This document lists all tasks associated with PBI 55.
 
 | Task ID | Name | Status | Description |
 | :------ | :--- | :----- | :---------- |
-| 55-1 | [PM Loading Indicator](./55-1.md) | Proposed | Display a visible loading indicator in the PM briefing zone while PM refresh is in flight |
-| 55-2 | [Immediate PM Refresh on View Entry](./55-2.md) | Proposed | Trigger an immediate PM engine run when the PM view is opened via P key |
-| 55-3 | [Manual PM Refresh Key](./55-3.md) | Proposed | Add r key handler in PM view to manually trigger a PM refresh with cache invalidation |
-| 55-4 | [Concurrent Provider Execution](./55-4.md) | Proposed | Execute task providers concurrently with bounded concurrency to reduce multi-project refresh latency |
-| 55-5 | [E2E CoS Test](./55-5.md) | Proposed | Verify all PBI-55 acceptance criteria through automated tests |
+| 55-1 | [PM Loading Indicator](./55-1.md) | Done | Display a visible loading indicator in the PM briefing zone while PM refresh is in flight |
+| 55-2 | [Immediate PM Refresh on View Entry](./55-2.md) | Review | Trigger an immediate PM engine run when the PM view is opened via P key |
+| 55-3 | [Manual PM Refresh Key](./55-3.md) | Review | Add r key handler in PM view to manually trigger a PM refresh with cache invalidation |
+| 55-4 | [Concurrent Provider Execution](./55-4.md) | Review | Execute task providers concurrently with bounded concurrency to reduce multi-project refresh latency |
+| 55-5 | [E2E CoS Test](./55-5.md) | Review | Verify all PBI-55 acceptance criteria through automated tests |
 
 ## Dependency Graph
 
