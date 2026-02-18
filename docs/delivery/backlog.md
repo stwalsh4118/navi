@@ -52,13 +52,14 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 44 | User | As a user, I want audio notifications to continue and session status visible in the tmux status bar while attached to a session so that I stay aware without detaching | Done | [View Details](./44/prd.md) |
 | 45 | User | As a user, I want audio notifications when external agent status changes (OpenCode, etc.) so that I have the same audio awareness for all agents, not just the primary Claude Code session | Done | [View Details](./45/prd.md) |
 | 46 | Developer | As a developer, I want Navi to discover projects from active sessions, capture state snapshots, and emit structured change events so that the PM has a data pipeline to reason about | Done | [View Details](./46/prd.md) |
-| 47 | Developer | As a developer, I want a PM TUI view with three zones (briefing, projects, events) toggled via P so that I can see all my projects and recent activity in one place | Agreed | [View Details](./47/prd.md) |
+| 47 | Developer | As a developer, I want a PM TUI view with three zones (briefing, projects, events) toggled via P so that I can see all my projects and recent activity in one place | Done | [View Details](./47/prd.md) |
 | 48 | Developer | As a developer, I want a persistent Claude CLI PM agent with a file-based memory system so that the PM can produce contextual briefings that improve over time | Proposed | [View Details](./48/prd.md) |
 | 49 | Developer | As a developer, I want the PM's briefing, attention items, and breadcrumbs rendered live in the TUI so that I can read the PM's analysis and see what needs action | Proposed | [View Details](./49/prd.md) |
 | 50 | Developer | As a developer, I want the PM to detect patterns, generate proactive suggestions, and show attention items in the session list footer so that important items are visible without switching views | Proposed | [View Details](./50/prd.md) |
 | 51 | Developer | As a developer, I want to ask the PM questions from the TUI so that I can interrogate its knowledge about my projects conversationally | Proposed | [View Details](./51/prd.md) |
 | 52 | Developer | As a developer, I want to register projects in config for tracking without active sessions so that the PM has full portfolio awareness | Proposed | [View Details](./52/prd.md) |
 | 53 | User | As a user, I want the session status icon and message to reflect the aggregate state of all agents so that external agents like OpenCode are first-class citizens in the display | Done | [View Details](./53/prd.md) |
+| 54 | Developer | As a developer, I want PM current-PBI detection to use session-scoped signals plus provider hints so that each active session maps to the correct PBI even during concurrent work | Proposed | [View Details](./54/prd.md) |
 
 ## History Log
 
@@ -175,3 +176,5 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 2026-02-16 14:24:46 | 46 | Status Change | Proposed → Agreed - User approved for task breakdown | User |
 | 2026-02-17 09:44:23 | 46 | Status Change | Agreed → Done - All 6 tasks Done, PM engine pipeline implemented and verified | AI_Agent |
 | 2026-02-17 10:41:25 | 47 | Status Change | Proposed → Agreed - User approved for task breakdown | User |
+| 20260217-234743 | 47 | Status Change | Agreed → Done - All 6 tasks Done, PM TUI three-zone view implemented and verified | AI_Agent |
+| 20260217-133155 | 54 | Created | PBI created from feature request: session-scoped current PBI detection with provider hint integration | AI_Agent |

@@ -8,12 +8,12 @@ This document lists all tasks associated with PBI 47.
 
 | Task ID | Name | Status | Description |
 | :------ | :--- | :----- | :---------- |
-| 47-1 | [PM View State, Toggle, and Layout Skeleton](./47-1.md) | Proposed | Add PM view model state, P keybinding toggle, three-zone vertical layout with briefing placeholder |
-| 47-2 | [Projects Zone Rendering and Navigation](./47-2.md) | Proposed | Render project rows from snapshots with columns, cursor navigation, Enter to jump to filtered sessions |
-| 47-3 | [Events Zone Rendering](./47-3.md) | Proposed | Render reverse-chronological color-coded event log, scrollable when focused |
-| 47-4 | [Focus System and Tab Navigation](./47-4.md) | Proposed | Tab to switch focus between Zone 2 and Zone 3, visual indicators, keyboard routing |
-| 47-5 | [Project Expansion and Responsive Layout](./47-5.md) | Proposed | Space to expand project rows, graceful degradation on small terminals |
-| 47-6 | [E2E CoS Test](./47-6.md) | Proposed | Verify all PBI-47 acceptance criteria with integration tests |
+| 47-1 | [PM View State, Toggle, and Layout Skeleton](./47-1.md) | Done | Add PM view model state, P keybinding toggle, three-zone vertical layout with briefing placeholder |
+| 47-2 | [Projects Zone Rendering and Navigation](./47-2.md) | Done | Render project rows from snapshots with columns, cursor navigation, Enter to jump to filtered sessions |
+| 47-3 | [Events Zone Rendering](./47-3.md) | Done | Render reverse-chronological color-coded event log, scrollable when focused |
+| 47-4 | [Focus System and Tab Navigation](./47-4.md) | Done | Tab to switch focus between Zone 2 and Zone 3, visual indicators, keyboard routing |
+| 47-5 | [Project Expansion and Responsive Layout](./47-5.md) | Done | Space to expand project rows, graceful degradation on small terminals |
+| 47-6 | [E2E CoS Test](./47-6.md) | Done | Verify all PBI-47 acceptance criteria with integration tests |
 
 ## Dependency Graph
 
