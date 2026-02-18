@@ -65,8 +65,17 @@ func CaptureSnapshot(projectDir string, sessions []session.Info, taskResult *tas
 
 	if taskResult != nil {
 		snapshot.TaskCounts = getTaskCounts(taskResult)
-		snapshot.CurrentPBIID, snapshot.CurrentPBITitle = getCurrentPBI(taskResult)
 	}
+
+	resolvedCurrentPBI := ResolveCurrentPBI(ResolverInput{
+		TaskResult: taskResult,
+		Sessions:   sessions,
+		ProjectDir: projectDir,
+		Branch:     snapshot.Branch,
+	})
+	snapshot.CurrentPBIID = resolvedCurrentPBI.PBIID
+	snapshot.CurrentPBITitle = resolvedCurrentPBI.Title
+	snapshot.CurrentPBISource = resolvedCurrentPBI.Source
 
 	status, activity := aggregateSessionState(sessions)
 	snapshot.SessionStatus = status
@@ -108,15 +117,6 @@ func getTaskCounts(taskResult *task.ProviderResult) TaskCounts {
 	}
 
 	return counts
-}
-
-func getCurrentPBI(taskResult *task.ProviderResult) (string, string) {
-	for _, group := range taskResult.Groups {
-		if strings.TrimSpace(group.ID) != "" || strings.TrimSpace(group.Title) != "" {
-			return group.ID, group.Title
-		}
-	}
-	return "", ""
 }
 
 func aggregateSessionState(sessions []session.Info) (string, int64) {

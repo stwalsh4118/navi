@@ -89,6 +89,9 @@ func TestCaptureSnapshot(t *testing.T) {
 	if snapshot.CurrentPBIID != "PBI-46" || snapshot.CurrentPBITitle != "PM Engine" {
 		t.Fatalf("unexpected pbi fields: id=%q title=%q", snapshot.CurrentPBIID, snapshot.CurrentPBITitle)
 	}
+	if snapshot.CurrentPBISource != "first_group_fallback" {
+		t.Fatalf("current pbi source = %q, want %q", snapshot.CurrentPBISource, "first_group_fallback")
+	}
 	if snapshot.SessionStatus != session.StatusWorking {
 		t.Fatalf("session status = %q, want %q", snapshot.SessionStatus, session.StatusWorking)
 	}
@@ -111,5 +114,36 @@ func TestCaptureSnapshotGitFailureReturnsPartialSnapshot(t *testing.T) {
 	snapshot := CaptureSnapshot("/does/not/exist", nil, nil)
 	if snapshot.Branch != "" || snapshot.HeadSHA != "" {
 		t.Fatalf("expected empty git fields, got branch=%q sha=%q", snapshot.Branch, snapshot.HeadSHA)
+	}
+}
+
+func TestCaptureSnapshotBranchPatternResolution(t *testing.T) {
+	projectDir := t.TempDir()
+
+	originalGitInfo := gitInfoFunc
+	originalHeadSHA := getHeadSHAFunc
+	t.Cleanup(func() {
+		gitInfoFunc = originalGitInfo
+		getHeadSHAFunc = originalHeadSHA
+	})
+
+	gitInfoFunc = func(_ string) *git.Info {
+		return &git.Info{Branch: "feature/pbi-46-pm-engine", Ahead: 0, Dirty: false, PRNum: 0}
+	}
+	getHeadSHAFunc = func(_ string) string { return "sha" }
+
+	taskResult := &task.ProviderResult{
+		Groups: []task.TaskGroup{
+			{ID: "PBI-45", Title: "Old Work", Status: "Done"},
+			{ID: "PBI-46", Title: "PM Engine", Status: "Done"},
+		},
+	}
+
+	snapshot := CaptureSnapshot(projectDir, nil, taskResult)
+	if snapshot.CurrentPBIID != "PBI-46" {
+		t.Fatalf("current pbi id = %q, want %q", snapshot.CurrentPBIID, "PBI-46")
+	}
+	if snapshot.CurrentPBISource != "branch_pattern" {
+		t.Fatalf("current pbi source = %q, want %q", snapshot.CurrentPBISource, "branch_pattern")
 	}
 }
