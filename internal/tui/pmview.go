@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	ansi "github.com/charmbracelet/x/ansi"
+	"github.com/muesli/reflow/wordwrap"
 
 	"github.com/stwalsh4118/navi/internal/pm"
 	"github.com/stwalsh4118/navi/internal/task"
@@ -22,7 +23,6 @@ const (
 
 const (
 	pmMinTerminalWidth        = 80
-	pmShortTerminalHeight     = 30
 	pmVeryShortTerminalHeight = 15
 	pmNarrowWidthThreshold    = 100
 	pmEventPageScrollAmt      = 8
@@ -81,6 +81,18 @@ func (m Model) updatePMView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			taskRefreshCmd(m.taskProjectConfigs, m.taskCache, m.taskGlobalConfig, task.DefaultProviderTimeout),
 			pmRunCmd(m.pmEngine, m.sessions, m.pmTaskResults),
 		)
+	case "i":
+		if m.pmInvoker == nil || m.pmInvokeInFlight {
+			return m, nil
+		}
+		var snapshots []pm.ProjectSnapshot
+		var events []pm.Event
+		if m.pmOutput != nil {
+			snapshots = m.pmOutput.Snapshots
+			events = m.pmOutput.Events
+		}
+		m.pmInvokeInFlight = true
+		return m, pmInvokeCmd(m.pmInvoker, pm.TriggerOnDemand, snapshots, events)
 	case "tab":
 		if m.pmZoneFocus == pmZoneProjects {
 			m.pmZoneFocus = pmZoneEvents
@@ -161,7 +173,8 @@ func (m *Model) movePMProjectCursor(delta int) {
 		m.pmProjectScrollOffset = m.pmProjectCursor - maxVisible + 1
 	}
 
-	maxScroll := len(snapshots) - maxVisible
+	// When scrolled down, the "above" indicator takes a slot.
+	maxScroll := len(snapshots) - maxVisible + 1
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
@@ -207,7 +220,8 @@ func (m Model) renderPMView(width, height int) string {
 		return pmBoxStyle.Width(width - 2).Render(message)
 	}
 
-	briefingH, projectsH, eventsH := pmZoneHeights(height)
+	briefingNeed := m.pmBriefingNaturalHeight(width)
+	briefingH, projectsH, eventsH := pmZoneHeights(height, briefingNeed)
 	sections := make([]string, 0, 3)
 	if briefingH > 0 {
 		sections = append(sections, m.renderPMBriefing(width, briefingH))
@@ -218,7 +232,7 @@ func (m Model) renderPMView(width, height int) string {
 	return strings.Join(sections, "\n")
 }
 
-func pmZoneHeights(contentHeight int) (int, int, int) {
+func pmZoneHeights(contentHeight, briefingNeed int) (int, int, int) {
 	if contentHeight <= 0 {
 		return 0, 0, 0
 	}
@@ -236,45 +250,54 @@ func pmZoneHeights(contentHeight int) (int, int, int) {
 		return 0, projectsH, eventsH
 	}
 
-	if contentHeight < pmShortTerminalHeight {
-		briefingH := 1
-		remaining := contentHeight - briefingH
-		projectsH := (remaining * 40) / 100
-		if projectsH < 1 {
-			projectsH = 1
-		}
-		eventsH := remaining - projectsH
-		if eventsH < 1 {
-			eventsH = 1
-			projectsH = remaining - eventsH
-		}
-		return briefingH, projectsH, eventsH
-	}
-
-	briefingH := (contentHeight * 30) / 100
-	projectsH := (contentHeight * 30) / 100
-	eventsH := contentHeight - briefingH - projectsH
+	// Give briefing its natural height, capped at 60% of total.
+	maxBriefingH := (contentHeight * 60) / 100
+	briefingH := briefingNeed
 	if briefingH < 1 {
 		briefingH = 1
 	}
+	if briefingH > maxBriefingH {
+		briefingH = maxBriefingH
+	}
+
+	// Split remaining space between projects and events.
+	remaining := contentHeight - briefingH
+	projectsH := (remaining * 40) / 100
 	if projectsH < 1 {
 		projectsH = 1
 	}
+	eventsH := remaining - projectsH
 	if eventsH < 1 {
 		eventsH = 1
+		projectsH = remaining - eventsH
 	}
 	return briefingH, projectsH, eventsH
 }
 
 func (m Model) renderPMBriefing(width, height int) string {
-	placeholder := dimStyle.Italic(true).Render("No PM briefing yet")
+	// Show loading indicator with streaming status
+	loading := ""
+	if m.pmInvokeInFlight {
+		status := "Invoking PM..."
+		if m.pmInvokeStatus != "" {
+			status = m.pmInvokeStatus
+		}
+		loading = dimStyle.Render(italicStyle.Render(status))
+	} else if m.pmRunInFlight {
+		loading = dimStyle.Render(italicStyle.Render(pmRefreshingLabel))
+	}
+
+	// If we have a briefing, render it
+	if m.pmBriefing != nil {
+		return m.renderPMBriefingContent(width, height, loading)
+	}
+
+	// Placeholder when no briefing available
+	placeholder := dimStyle.Italic(true).Render("No PM briefing yet — press i to invoke")
 	if m.pmLastError != "" {
 		placeholder = redStyle.Render("PM refresh error: " + m.pmLastError)
 	}
-	loading := ""
-	if m.pmRunInFlight {
-		loading = dimStyle.Render(italicStyle.Render(pmRefreshingLabel))
-	}
+
 	if height <= 1 {
 		if loading != "" {
 			return lipgloss.NewStyle().Width(width).Align(lipgloss.Center).Render(loading)
@@ -294,6 +317,136 @@ func (m Model) renderPMBriefing(width, height int) string {
 	}
 	content := lipgloss.NewStyle().Width(width-4).Height(contentHeight).Align(lipgloss.Center, lipgloss.Center).Render(placeholder)
 	return pmBoxStyle.Width(width - 2).Render(content)
+}
+
+// pmBriefingNaturalHeight calculates how many lines the briefing content needs,
+// including box borders (+2).
+func (m Model) pmBriefingNaturalHeight(width int) int {
+	if m.pmBriefing == nil {
+		return 3 // header + placeholder + borders
+	}
+	contentWidth := width - 4
+	if contentWidth < 10 {
+		contentWidth = 10
+	}
+
+	lines := 1 // header
+
+	// Summary lines
+	if m.pmBriefing.Summary != "" {
+		wrapped := wordwrap.String(m.pmBriefing.Summary, contentWidth)
+		lines += strings.Count(wrapped, "\n") + 1
+	}
+
+	// Projects
+	if len(m.pmBriefing.Projects) > 0 {
+		lines++ // blank separator
+		for _, proj := range m.pmBriefing.Projects {
+			lines++ // project name + status
+			if proj.CurrentWork != "" {
+				wrapped := wordwrap.String("  "+proj.CurrentWork, contentWidth)
+				lines += strings.Count(wrapped, "\n") + 1
+			}
+		}
+	}
+
+	// Attention items
+	if len(m.pmBriefing.AttentionItems) > 0 {
+		lines += 2 // blank separator + "Attention" header
+		lines += len(m.pmBriefing.AttentionItems)
+	}
+
+	return lines + 2 // +2 for box borders
+}
+
+func (m Model) renderPMBriefingContent(width, height int, loading string) string {
+	contentWidth := width - 4
+	contentHeight := height - 2
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+
+	lines := make([]string, 0, contentHeight)
+
+	// Header
+	header := boldStyle.Render("PM Briefing")
+	if m.pmBriefingStale {
+		header += " " + yellowStyle.Render("(stale)")
+	}
+	if loading != "" {
+		header += " " + loading
+	}
+	lines = append(lines, header)
+
+	// Summary — word-wrap across multiple lines
+	if m.pmBriefing.Summary != "" && len(lines) < contentHeight {
+		wrapped := wordwrap.String(m.pmBriefing.Summary, contentWidth)
+		for _, wl := range strings.Split(wrapped, "\n") {
+			if len(lines) >= contentHeight {
+				break
+			}
+			lines = append(lines, dimStyle.Render(wl))
+		}
+	}
+
+	// Projects
+	if len(m.pmBriefing.Projects) > 0 && len(lines) < contentHeight {
+		lines = append(lines, "")
+		for _, proj := range m.pmBriefing.Projects {
+			if len(lines) >= contentHeight {
+				break
+			}
+			name := boldStyle.Render(proj.Name)
+			status := dimStyle.Render("[" + proj.Status + "]")
+			line := name + " " + status
+			lines = append(lines, line)
+
+			if proj.CurrentWork != "" && len(lines) < contentHeight {
+				work := "  " + proj.CurrentWork
+				for _, wl := range strings.Split(wordwrap.String(work, contentWidth), "\n") {
+					if len(lines) >= contentHeight {
+						break
+					}
+					lines = append(lines, wl)
+				}
+			}
+		}
+	}
+
+	// Attention items
+	if len(m.pmBriefing.AttentionItems) > 0 && len(lines) < contentHeight {
+		lines = append(lines, "")
+		lines = append(lines, boldStyle.Render("Attention"))
+		for _, item := range m.pmBriefing.AttentionItems {
+			if len(lines) >= contentHeight {
+				break
+			}
+			prefix := pmAttentionPrefix(item.Priority)
+			title := item.Title
+			if item.ProjectName != "" {
+				title += dimStyle.Render(" (" + item.ProjectName + ")")
+			}
+			line := prefix + " " + title
+			if lipgloss.Width(line) > contentWidth {
+				line = pmTruncateANSI(line, contentWidth)
+			}
+			lines = append(lines, line)
+		}
+	}
+
+	content := strings.Join(lines, "\n")
+	return pmBoxStyle.Width(width - 2).Render(lipgloss.NewStyle().Width(contentWidth).Height(contentHeight).Render(content))
+}
+
+func pmAttentionPrefix(priority string) string {
+	switch priority {
+	case "high":
+		return redStyle.Render("!")
+	case "medium":
+		return yellowStyle.Render("*")
+	default:
+		return dimStyle.Render("-")
+	}
 }
 
 func (m Model) renderPMProjects(width, height int) string {
@@ -672,7 +825,8 @@ func pmAttentionRank(status string) int {
 
 func (m Model) pmProjectsVisibleRows() int {
 	contentHeight := m.height - 8
-	_, projectsH, _ := pmZoneHeights(contentHeight)
+	briefingNeed := m.pmBriefingNaturalHeight(m.width)
+	_, projectsH, _ := pmZoneHeights(contentHeight, briefingNeed)
 	maxVisible := projectsH - 2
 	if maxVisible < 1 {
 		maxVisible = 1
@@ -682,13 +836,16 @@ func (m Model) pmProjectsVisibleRows() int {
 
 func (m Model) pmMaxEventScroll() int {
 	contentHeight := m.height - 8
-	_, _, eventsH := pmZoneHeights(contentHeight)
+	briefingNeed := m.pmBriefingNaturalHeight(m.width)
+	_, _, eventsH := pmZoneHeights(contentHeight, briefingNeed)
 	maxVisible := eventsH - 2
 	if maxVisible < 1 {
 		maxVisible = 1
 	}
 	events := m.sortedPMEvents()
-	maxScroll := len(events) - maxVisible
+	// When scrolled down, the "above" indicator takes one slot,
+	// so we need one extra scroll position to reach the bottom.
+	maxScroll := len(events) - maxVisible + 1
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
