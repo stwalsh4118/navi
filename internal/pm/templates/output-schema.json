@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["summary", "projects", "attention_items", "breadcrumbs"],
+  "additionalProperties": false,
+  "properties": {
+    "summary": {
+      "type": "string"
+    },
+    "projects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "status", "current_work", "recent_activity"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "current_work": {
+            "type": "string"
+          },
+          "recent_activity": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "attention_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["priority", "title", "description", "project_name"],
+        "additionalProperties": false,
+        "properties": {
+          "priority": {
+            "type": "string",
+            "enum": ["high", "medium", "low"]
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "project_name": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "breadcrumbs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["timestamp", "summary"],
+        "additionalProperties": false,
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "summary": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
