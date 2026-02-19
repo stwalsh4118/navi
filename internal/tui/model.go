@@ -130,6 +130,12 @@ type Model struct {
 	pmProjectFilterDir    string
 	pmLastError           string
 
+	// Sound pack picker state
+	soundPacks           []audio.PackInfo // Loaded pack list
+	soundPackCursor      int              // Current selection index
+	soundPackScrollOffset int             // Viewport scroll offset
+	activeSoundPack      string           // Currently active pack name
+
 	// Content viewer state
 	contentViewerTitle      string      // Title displayed in the content viewer header
 	contentViewerLines      []string    // Content split into lines for scrolling
@@ -192,6 +198,12 @@ type pmStreamMsg struct {
 	status   string
 	streamCh <-chan pm.StreamEvent
 	resultCh <-chan pmInvokeMsg
+}
+
+// soundPacksMsg is returned after loading available sound packs.
+type soundPacksMsg struct {
+	packs []audio.PackInfo
+	err   error
 }
 
 // gitTickMsg is sent to trigger periodic git info refresh.
@@ -687,6 +699,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
+		case "S":
+			// Open sound pack picker dialog (only when audio is configured)
+			if m.audioNotifier != nil {
+				m.dialogMode = DialogSoundPackPicker
+				m.dialogError = ""
+				m.soundPackCursor = 0
+				m.soundPackScrollOffset = 0
+				return m, loadSoundPacksCmd()
+			}
+			return m, nil
+
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		}
@@ -704,6 +727,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			)
 		}
 		return m, taskTickCmd(interval)
+
+	case soundPacksMsg:
+		if msg.err != nil {
+			m.dialogError = msg.err.Error()
+		} else {
+			m.soundPacks = msg.packs
+		}
+		if m.audioNotifier != nil {
+			m.activeSoundPack = m.audioNotifier.ActivePack()
+		}
+		return m, nil
 
 	case tasksMsg:
 		m.taskGroupsByProject = msg.groupsByProject
@@ -2002,6 +2036,97 @@ func (m *Model) stopAttachMonitor() {
 	m.attachMonitorCancel = nil
 }
 
+// loadSoundPacksCmd returns a tea.Cmd that loads available sound packs.
+func loadSoundPacksCmd() tea.Cmd {
+	return func() tea.Msg {
+		packs, err := audio.ListPacks()
+		return soundPacksMsg{packs: packs, err: err}
+	}
+}
+
+// soundPackPickerMaxVisible is the maximum number of pack rows visible in the picker viewport.
+const soundPackPickerMaxVisible = 10
+
+// updateSoundPackPicker handles keyboard input for the sound pack picker dialog.
+func (m Model) updateSoundPackPicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.dialogMode = DialogNone
+		m.dialogError = ""
+		return m, nil
+
+	case "up", "k":
+		if len(m.soundPacks) > 0 && m.soundPackCursor > 0 {
+			m.soundPackCursor--
+			if m.soundPackCursor < m.soundPackScrollOffset {
+				m.soundPackScrollOffset = m.soundPackCursor
+			}
+		}
+		return m, nil
+
+	case "down", "j":
+		if len(m.soundPacks) > 0 && m.soundPackCursor < len(m.soundPacks)-1 {
+			m.soundPackCursor++
+			if m.soundPackCursor >= m.soundPackScrollOffset+soundPackPickerMaxVisible {
+				m.soundPackScrollOffset = m.soundPackCursor - soundPackPickerMaxVisible + 1
+			}
+		}
+		return m, nil
+
+	case "enter":
+		if len(m.soundPacks) == 0 {
+			return m, nil
+		}
+		selected := m.soundPacks[m.soundPackCursor]
+		if m.audioNotifier != nil {
+			if err := m.audioNotifier.SetPack(selected.Name); err != nil {
+				m.dialogError = fmt.Sprintf("Failed to switch pack: %v", err)
+				return m, nil
+			}
+		}
+		configPath := pathutil.ExpandPath(audio.DefaultConfigPath)
+		if err := audio.SavePackSelection(configPath, selected.Name); err != nil {
+			m.dialogError = fmt.Sprintf("Pack applied but failed to save: %v", err)
+			return m, nil
+		}
+		m.activeSoundPack = selected.Name
+		m.dialogMode = DialogNone
+		m.dialogError = ""
+		return m, nil
+
+	case "p", " ":
+		// Preview: play a sample sound from the highlighted pack
+		if len(m.soundPacks) == 0 || m.audioNotifier == nil {
+			return m, nil
+		}
+		selected := m.soundPacks[m.soundPackCursor]
+		return m, previewSoundPackCmd(selected.Name)
+	}
+
+	return m, nil
+}
+
+// previewSoundPackCmd returns a tea.Cmd that plays a sample sound from the given pack.
+func previewSoundPackCmd(packName string) tea.Cmd {
+	return func() tea.Msg {
+		files, err := audio.ResolveSoundFiles(packName)
+		if err != nil || len(files) == 0 {
+			return nil
+		}
+		// Pick the first available event's first file
+		for _, paths := range files {
+			if len(paths) > 0 {
+				p := audio.NewPlayer("")
+				if p.Available() {
+					_ = p.Play(paths[0], 100)
+				}
+				break
+			}
+		}
+		return nil
+	}
+}
+
 // attachSession returns a command that attaches to a local tmux session.
 // Uses tea.ExecProcess to hand off terminal control to tmux.
 func attachSession(name string) tea.Cmd {
@@ -2035,6 +2160,11 @@ func (m Model) updateDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Route content viewer keys to its own handler
 	if m.dialogMode == DialogContentViewer {
 		return m.updateContentViewer(msg)
+	}
+
+	// Route sound pack picker keys to its own handler
+	if m.dialogMode == DialogSoundPackPicker {
+		return m.updateSoundPackPicker(msg)
 	}
 
 	switch msg.String() {
@@ -2633,6 +2763,7 @@ func InitialModel() Model {
 		taskFilterMode:      taskFilterAll,
 		previewAutoScroll:   true,
 		audioNotifier:       audioNotifier,
+		activeSoundPack:     audioConfig.Pack,
 		lastSessionStates:   make(map[string]string),
 		lastAgentStates:     make(map[string]map[string]string),
 		pmEngine:            pm.NewEngine(),
