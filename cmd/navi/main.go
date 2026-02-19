@@ -11,8 +11,13 @@ import (
 )
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "status" {
-		os.Exit(cli.RunStatus(os.Args[2:]))
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "status":
+			os.Exit(cli.RunStatus(os.Args[2:]))
+		case "sound":
+			os.Exit(cli.RunSound(os.Args[2:]))
+		}
 	}
 
 	p := tea.NewProgram(tui.InitialModel(), tea.WithAltScreen())
