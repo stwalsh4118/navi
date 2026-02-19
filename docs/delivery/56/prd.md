@@ -182,4 +182,4 @@ None — all questions resolved during brainstorm.
 
 ## Related Tasks
 
-_Tasks will be created when this PBI is approved via `/plan-pbi 56`._
+[View Tasks](./tasks.md)
