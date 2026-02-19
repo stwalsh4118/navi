@@ -670,13 +670,17 @@ func (m Model) renderFooter() string {
 		// Show session action keybindings
 		parts = append(parts, "d dismiss", "n new", "x kill", "R rename", "G git")
 
-		parts = append(parts, "r refresh", "q quit")
+		parts = append(parts, "m mute", "r refresh", "q quit")
 	}
 
 	footerHelp := strings.Join(parts, "  ")
 
 	// Build status line with active filter/sort/search state
 	var statusParts []string
+
+	if m.audioNotifier != nil && m.audioNotifier.IsMuted() {
+		statusParts = append(statusParts, filterActiveStyle.Render("MUTED"))
+	}
 
 	if m.statusFilter != "" {
 		statusParts = append(statusParts, filterActiveStyle.Render("Filter: "+m.statusFilter))

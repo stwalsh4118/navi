@@ -681,6 +681,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "P":
 			return m, m.togglePMView()
 
+		case "m":
+			if m.audioNotifier != nil {
+				m.audioNotifier.SetMuted(!m.audioNotifier.IsMuted())
+			}
+			return m, nil
+
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		}
