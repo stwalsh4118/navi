@@ -214,6 +214,115 @@ func TestLoadConfigBackwardsCompatNoPack(t *testing.T) {
 	}
 }
 
+func TestSavePackSelectionNewFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "sounds.yaml")
+
+	if err := SavePackSelection(configPath, "starcraft"); err != nil {
+		t.Fatalf("SavePackSelection error: %v", err)
+	}
+
+	// Verify file was created with correct pack
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("LoadConfig error: %v", err)
+	}
+	if cfg.Pack != "starcraft" {
+		t.Fatalf("expected pack=starcraft, got %q", cfg.Pack)
+	}
+	// Verify defaults are preserved
+	if cfg.CooldownSeconds != 5 {
+		t.Fatalf("expected default cooldown=5, got %d", cfg.CooldownSeconds)
+	}
+}
+
+func TestSavePackSelectionPreservesSettings(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "sounds.yaml")
+
+	// Write initial config with custom settings
+	initial := strings.Join([]string{
+		"enabled: true",
+		"pack: old-pack",
+		"volume:",
+		"  global: 80",
+		"  events:",
+		"    done: 0.7",
+		"triggers:",
+		"  done: true",
+		"  error: true",
+		"cooldown_seconds: 10",
+		"player: mpv",
+		"tts_engine: espeak-ng",
+		"tts:",
+		"  enabled: true",
+		"  template: custom-template",
+	}, "\n")
+	if err := os.WriteFile(configPath, []byte(initial), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	if err := SavePackSelection(configPath, "new-pack"); err != nil {
+		t.Fatalf("SavePackSelection error: %v", err)
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("LoadConfig error: %v", err)
+	}
+	if cfg.Pack != "new-pack" {
+		t.Fatalf("expected pack=new-pack, got %q", cfg.Pack)
+	}
+	if !cfg.Enabled {
+		t.Fatalf("expected enabled preserved")
+	}
+	if cfg.Volume.Global != 80 {
+		t.Fatalf("expected volume.global=80 preserved, got %d", cfg.Volume.Global)
+	}
+	if cfg.CooldownSeconds != 10 {
+		t.Fatalf("expected cooldown=10 preserved, got %d", cfg.CooldownSeconds)
+	}
+	if cfg.Player != "mpv" {
+		t.Fatalf("expected player=mpv preserved, got %q", cfg.Player)
+	}
+}
+
+func TestSavePackSelectionEmptyPackClears(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "sounds.yaml")
+
+	// Set initial pack
+	if err := SavePackSelection(configPath, "some-pack"); err != nil {
+		t.Fatalf("initial save error: %v", err)
+	}
+
+	// Clear pack
+	if err := SavePackSelection(configPath, ""); err != nil {
+		t.Fatalf("clear save error: %v", err)
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("LoadConfig error: %v", err)
+	}
+	if cfg.Pack != "" {
+		t.Fatalf("expected empty pack after clearing, got %q", cfg.Pack)
+	}
+}
+
+func TestSavePackSelectionCreatesParentDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "nested", "dir", "sounds.yaml")
+
+	if err := SavePackSelection(configPath, "test"); err != nil {
+		t.Fatalf("SavePackSelection error: %v", err)
+	}
+
+	if _, err := os.Stat(configPath); err != nil {
+		t.Fatalf("expected file created: %v", err)
+	}
+}
+
 func TestEffectiveVolumeCalculation(t *testing.T) {
 	tests := []struct {
 		name     string

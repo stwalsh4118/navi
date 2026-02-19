@@ -86,6 +86,9 @@ func volumeArgs(backend string, volume int) []string {
 	case "paplay":
 		scaled := int(math.Round(float64(volume) * float64(paplayMaxVolume) / float64(fullVolume)))
 		return []string{fmt.Sprintf("--volume=%d", scaled)}
+	case "pw-play":
+		scaled := float64(volume) / float64(fullVolume)
+		return []string{fmt.Sprintf("--volume=%.2f", scaled)}
 	case "afplay":
 		scaled := float64(volume) / float64(fullVolume)
 		return []string{"-v", fmt.Sprintf("%.2f", scaled)}
@@ -119,7 +122,7 @@ func autoPlayerCandidates() []string {
 	if runtime.GOOS == "darwin" {
 		return []string{"afplay"}
 	}
-	return []string{"paplay", "aplay", "ffplay", "mpv"}
+	return []string{"pw-play", "paplay", "aplay", "ffplay", "mpv"}
 }
 
 func playerArgs(backend, filePath string) []string {
@@ -127,7 +130,7 @@ func playerArgs(backend, filePath string) []string {
 	case "ffplay":
 		return []string{"-nodisp", "-autoexit", "-loglevel", "quiet", filePath}
 	case "mpv":
-		return []string{"--no-video", filePath}
+		return []string{"--no-video", "--no-config", "--really-quiet", "--no-terminal", filePath}
 	default:
 		return []string{filePath}
 	}
