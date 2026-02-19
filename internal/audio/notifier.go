@@ -2,6 +2,7 @@ package audio
 
 import (
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"sync"
 	"time"
@@ -10,7 +11,7 @@ import (
 const ttsDelayAfterSound = 150 * time.Millisecond
 
 type soundPlayer interface {
-	Play(filePath string) error
+	Play(filePath string, volume int) error
 	Available() bool
 	Backend() string
 }
@@ -27,11 +28,14 @@ type Notifier struct {
 	player    soundPlayer
 	tts       speechEngine
 	cooldowns map[string]time.Time
+	packFiles map[string][]string
 
 	mu       sync.Mutex
+	muted    bool
 	now      func() time.Time
 	runAsync func(func())
 	ttsDelay time.Duration
+	randIntn func(n int) int
 }
 
 // NewNotifier creates a notifier from configuration and auto-detected backends.
@@ -50,6 +54,16 @@ func NewNotifier(cfg *Config) *Notifier {
 			go fn()
 		},
 		ttsDelay: ttsDelayAfterSound,
+		randIntn: rand.IntN,
+	}
+
+	if cfg.Pack != "" {
+		files, err := ResolveSoundFiles(cfg.Pack)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to load sound pack %q: %v\n", cfg.Pack, err)
+		} else {
+			notifier.packFiles = files
+		}
 	}
 
 	if cfg.Enabled {
@@ -62,6 +76,26 @@ func NewNotifier(cfg *Config) *Notifier {
 	}
 
 	return notifier
+}
+
+// SetMuted sets the mute state (thread-safe).
+func (n *Notifier) SetMuted(muted bool) {
+	if n == nil {
+		return
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.muted = muted
+}
+
+// IsMuted returns the current mute state (thread-safe).
+func (n *Notifier) IsMuted() bool {
+	if n == nil {
+		return false
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.muted
 }
 
 // Enabled reports whether notifications can currently produce audio output.
@@ -84,6 +118,10 @@ func (n *Notifier) Notify(sessionName, newStatus string) {
 		return
 	}
 
+	if n.IsMuted() {
+		return
+	}
+
 	triggerEnabled, ok := n.cfg.Triggers[newStatus]
 	if !ok || !triggerEnabled {
 		return
@@ -93,9 +131,12 @@ func (n *Notifier) Notify(sessionName, newStatus string) {
 		return
 	}
 
+	volume := n.cfg.Volume.EffectiveVolume(newStatus)
+	filePath := n.resolveSound(newStatus)
+
 	soundPlayed := false
-	if filePath, ok := n.cfg.Files[newStatus]; ok && filePath != "" && n.player.Available() {
-		if err := n.player.Play(filePath); err != nil {
+	if filePath != "" && n.player.Available() {
+		if err := n.player.Play(filePath, volume); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to play notification sound: %v\n", err)
 		} else {
 			soundPlayed = true
@@ -122,6 +163,25 @@ func (n *Notifier) Notify(sessionName, newStatus string) {
 	if err := n.tts.Speak(announcement); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to announce notification: %v\n", err)
 	}
+}
+
+// resolveSound returns the file path for a status, following the resolution order:
+// 1. cfg.Files[status] (explicit override) — single file, no randomization
+// 2. packFiles[status] — random selection if multiple files
+// 3. empty string (no sound)
+func (n *Notifier) resolveSound(status string) string {
+	if filePath, ok := n.cfg.Files[status]; ok && filePath != "" {
+		return filePath
+	}
+
+	if files, ok := n.packFiles[status]; ok && len(files) > 0 {
+		if len(files) == 1 {
+			return files[0]
+		}
+		return files[n.randIntn(len(files))]
+	}
+
+	return ""
 }
 
 func (n *Notifier) tryAcquireCooldown(sessionName string) bool {

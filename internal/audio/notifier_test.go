@@ -8,10 +8,12 @@ import (
 type mockPlayer struct {
 	available bool
 	files     []string
+	volumes   []int
 }
 
-func (m *mockPlayer) Play(filePath string) error {
+func (m *mockPlayer) Play(filePath string, volume int) error {
 	m.files = append(m.files, filePath)
+	m.volumes = append(m.volumes, volume)
 	return nil
 }
 
@@ -42,7 +44,14 @@ func newTestNotifier(cfg *Config, player *mockPlayer, tts *mockTTS) *Notifier {
 			fn()
 		},
 		ttsDelay: 0,
+		randIntn: func(n int) int { return 0 },
 	}
+	return n
+}
+
+func newTestNotifierWithPack(cfg *Config, player *mockPlayer, tts *mockTTS, packFiles map[string][]string) *Notifier {
+	n := newTestNotifier(cfg, player, tts)
+	n.packFiles = packFiles
 	return n
 }
 
@@ -185,5 +194,190 @@ func TestNotifyNoBackends(t *testing.T) {
 	}
 	if n.Enabled() {
 		t.Fatalf("expected notifier disabled with no backends")
+	}
+}
+
+func TestMuteBlocksNotify(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.Triggers["permission"] = true
+	cfg.Files["permission"] = "/tmp/permission.wav"
+	cfg.TTS.Enabled = true
+
+	player := &mockPlayer{available: true}
+	tts := &mockTTS{available: true}
+	n := newTestNotifier(cfg, player, tts)
+
+	n.SetMuted(true)
+	n.Notify("mysession", "permission")
+
+	if len(player.files) != 0 {
+		t.Fatalf("expected no playback when muted, got %d", len(player.files))
+	}
+	if len(tts.texts) != 0 {
+		t.Fatalf("expected no TTS when muted, got %d", len(tts.texts))
+	}
+}
+
+func TestUnmuteRestoresNotify(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.Triggers["done"] = true
+	cfg.Files["done"] = "/tmp/done.wav"
+
+	player := &mockPlayer{available: true}
+	tts := &mockTTS{available: true}
+	n := newTestNotifier(cfg, player, tts)
+
+	n.SetMuted(true)
+	n.Notify("s1", "done")
+	if len(player.files) != 0 {
+		t.Fatalf("expected no playback when muted")
+	}
+
+	n.SetMuted(false)
+	n.Notify("s1", "done")
+	if len(player.files) != 1 {
+		t.Fatalf("expected playback after unmute, got %d", len(player.files))
+	}
+}
+
+func TestSetMutedNilSafety(t *testing.T) {
+	var n *Notifier
+	n.SetMuted(true)  // should not panic
+	n.SetMuted(false) // should not panic
+	if n.IsMuted() {
+		t.Fatalf("nil notifier should return false for IsMuted")
+	}
+}
+
+func TestPackResolution(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.Triggers["done"] = true
+
+	packFiles := map[string][]string{
+		"done": {"/pack/done.wav"},
+	}
+
+	player := &mockPlayer{available: true}
+	tts := &mockTTS{available: true}
+	n := newTestNotifierWithPack(cfg, player, tts, packFiles)
+
+	n.Notify("s1", "done")
+
+	if len(player.files) != 1 || player.files[0] != "/pack/done.wav" {
+		t.Fatalf("expected pack file, got %v", player.files)
+	}
+}
+
+func TestFilesOverridesPack(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.Triggers["done"] = true
+	cfg.Files["done"] = "/override/done.wav"
+
+	packFiles := map[string][]string{
+		"done": {"/pack/done.wav"},
+	}
+
+	player := &mockPlayer{available: true}
+	tts := &mockTTS{available: true}
+	n := newTestNotifierWithPack(cfg, player, tts, packFiles)
+
+	n.Notify("s1", "done")
+
+	if len(player.files) != 1 || player.files[0] != "/override/done.wav" {
+		t.Fatalf("expected files override, got %v", player.files)
+	}
+}
+
+func TestNoPackNoFilesStillSpeaks(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.Triggers["done"] = true
+	cfg.TTS.Enabled = true
+
+	player := &mockPlayer{available: true}
+	tts := &mockTTS{available: true}
+	n := newTestNotifier(cfg, player, tts)
+
+	n.Notify("s1", "done")
+
+	if len(player.files) != 0 {
+		t.Fatalf("expected no playback without files or pack")
+	}
+	if len(tts.texts) != 1 {
+		t.Fatalf("expected TTS still works, got %d", len(tts.texts))
+	}
+}
+
+func TestRandomSelection(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.Triggers["waiting"] = true
+	cfg.CooldownSeconds = 0
+
+	packFiles := map[string][]string{
+		"waiting": {"/pack/waiting-1.wav", "/pack/waiting-2.wav", "/pack/waiting-3.wav"},
+	}
+
+	player := &mockPlayer{available: true}
+	tts := &mockTTS{available: false}
+
+	callCount := 0
+	n := newTestNotifierWithPack(cfg, player, tts, packFiles)
+	n.randIntn = func(n int) int {
+		idx := callCount % n
+		callCount++
+		return idx
+	}
+	n.cfg.CooldownSeconds = 0
+
+	// Force cooldown to be 0 for multiple calls
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	n.now = func() time.Time {
+		now = now.Add(time.Hour)
+		return now
+	}
+
+	n.Notify("s1", "waiting")
+	n.Notify("s2", "waiting")
+	n.Notify("s3", "waiting")
+
+	if len(player.files) != 3 {
+		t.Fatalf("expected 3 playback calls, got %d", len(player.files))
+	}
+
+	// Verify different files were selected
+	seen := make(map[string]bool)
+	for _, f := range player.files {
+		seen[f] = true
+	}
+	if len(seen) < 2 {
+		t.Fatalf("expected variation in file selection, got %v", player.files)
+	}
+}
+
+func TestVolumePassedToPlayer(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.Triggers["done"] = true
+	cfg.Files["done"] = "/tmp/done.wav"
+	cfg.Volume.Global = 80
+	cfg.Volume.Events["done"] = 0.7
+
+	player := &mockPlayer{available: true}
+	tts := &mockTTS{available: false}
+	n := newTestNotifier(cfg, player, tts)
+
+	n.Notify("s1", "done")
+
+	if len(player.volumes) != 1 {
+		t.Fatalf("expected 1 volume entry, got %d", len(player.volumes))
+	}
+	// 80 * 0.7 = 56
+	if player.volumes[0] != 56 {
+		t.Fatalf("expected volume 56, got %d", player.volumes[0])
 	}
 }

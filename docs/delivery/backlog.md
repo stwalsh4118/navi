@@ -61,7 +61,9 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 53 | User | As a user, I want the session status icon and message to reflect the aggregate state of all agents so that external agents like OpenCode are first-class citizens in the display | Done | [View Details](./53/prd.md) |
 | 54 | Developer | As a developer, I want PM current-PBI detection to use session-scoped signals plus provider hints so that each active session maps to the correct PBI even during concurrent work | Done | [View Details](./54/prd.md) |
 | 55 | User | As a user, I want PM project status to refresh immediately with visible loading feedback and faster provider updates so that pressing P feels responsive and trustworthy | Done | [View Details](./55/prd.md) |
-| 56 | User | As a user, I want swappable sound packs, volume control, multiple sounds per event with random selection, and mute/preview controls so that audio notifications are customizable, varied, and easy to manage | Proposed | [View Details](./56/prd.md) |
+| 56 | User | As a user, I want swappable sound packs, volume control, multiple sounds per event with random selection, and mute/preview controls so that audio notifications are customizable, varied, and easy to manage | Done | [View Details](./56/prd.md) |
+| 57 | User | As a user, I want to see per-session RAM usage in the sidebar so that I can spot memory leaks at a glance without leaving the TUI | Proposed | [View Details](./57/prd.md) |
+| 58 | User | As a user, I want to browse and switch sound packs from within the TUI so that I can customize audio without editing config files | Proposed | [View Details](./58/prd.md) |
 
 ## History Log
 
@@ -195,6 +197,11 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 2026-02-18 08:03:47 | 55 | Status Change | Agreed → InProgress. Started implementation. | AI_Agent |
 | 2026-02-18 08:34:19 | 55 | Status Change | InProgress → Done - All 5 tasks completed, verified, and marked Done. | AI_Agent |
 | 20260218-134032 | 56 | Created | PBI created from feature request: Enhanced audio — sound packs, volume control, multi-sound randomization, and UX polish | AI_Agent |
+| 2026-02-19 04:44:42 | 56 | Status Change | Proposed → Agreed. Auto-approved for planning. | AI_Agent |
 | 2026-02-18 08:53:42 | 48 | Status Change | Proposed → Agreed. Auto-approved for planning. | AI_Agent |
 | 2026-02-18 09:01:39 | 48 | Status Change | Agreed → InProgress. Started implementation. | AI_Agent |
 | 2026-02-18 13:05:37 | 48 | Status Change | InProgress → Done. All 8 tasks Done, all tests pass with -race, go vet clean. | AI_Agent |
+| 20260219-045533 | 57 | Created | PBI created from feature request: per-session RAM usage monitoring via /proc process tree walking | AI_Agent |
+| 2026-02-19 05:13:33 | 56 | Status Change | Agreed → InProgress. Started implementation. | AI_Agent |
+| 20260219-055331 | 58 | Created | PBI created from feature request: in-TUI sound pack picker with S keybind, preview, and config persistence | AI_Agent |
+| 2026-02-19 06:00:26 | 56 | Status Change | InProgress → Done. All 7 tasks Done, all tests pass with -race, go vet clean. | AI_Agent |

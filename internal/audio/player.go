@@ -3,9 +3,15 @@ package audio
 import (
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"runtime"
+)
+
+const (
+	paplayMaxVolume = 65536
+	fullVolume      = 100
 )
 
 var (
@@ -43,9 +49,13 @@ func (p *Player) Backend() string {
 }
 
 // Play validates the audio file then starts non-blocking playback.
-func (p *Player) Play(filePath string) error {
+// Volume is 0-100 where 0 skips playback and 100 uses backend default.
+func (p *Player) Play(filePath string, volume int) error {
 	if filePath == "" {
 		return errAudioFileRequired
+	}
+	if volume <= 0 {
+		return nil
 	}
 	if _, err := os.Stat(filePath); err != nil {
 		return fmt.Errorf("audio file not found: %w", err)
@@ -57,6 +67,10 @@ func (p *Player) Play(filePath string) error {
 	backend := p.backend
 	args := playerArgs(backend, filePath)
 
+	if volume < fullVolume {
+		args = append(args, volumeArgs(backend, volume)...)
+	}
+
 	go func() {
 		if err := playerRunCmd(backend, args...); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to play sound via %s: %v\n", backend, err)
@@ -64,6 +78,24 @@ func (p *Player) Play(filePath string) error {
 	}()
 
 	return nil
+}
+
+// volumeArgs returns backend-specific CLI flags for the given volume level (0-100).
+func volumeArgs(backend string, volume int) []string {
+	switch backend {
+	case "paplay":
+		scaled := int(math.Round(float64(volume) * float64(paplayMaxVolume) / float64(fullVolume)))
+		return []string{fmt.Sprintf("--volume=%d", scaled)}
+	case "afplay":
+		scaled := float64(volume) / float64(fullVolume)
+		return []string{"-v", fmt.Sprintf("%.2f", scaled)}
+	case "mpv":
+		return []string{fmt.Sprintf("--volume=%d", volume)}
+	case "ffplay":
+		return []string{"-volume", fmt.Sprintf("%d", volume)}
+	default:
+		return nil
+	}
 }
 
 func detectPlayerBackend(override string) string {
