@@ -8,11 +8,11 @@ This document lists all tasks associated with PBI 58.
 
 | Task ID | Name | Status | Description |
 | :------ | :--- | :----- | :---------- |
-| 58-1 | [Audio SetPack and SavePackSelection](./58-1.md) | Proposed | Add Notifier.SetPack() for runtime hot-swap and SavePackSelection() for YAML persistence |
-| 58-2 | [Dialog enum and model state](./58-2.md) | Proposed | Add DialogSoundPackPicker enum, picker state fields, and S keybind to open picker |
-| 58-3 | [Picker update logic](./58-3.md) | Proposed | Handle keyboard navigation, selection, preview, and close in updateDialog routing |
-| 58-4 | [Picker rendering](./58-4.md) | Proposed | Render scrollable pack list overlay with active marker, counts, and empty-state message |
-| 58-5 | [E2E CoS Test](./58-5.md) | Proposed | End-to-end tests verifying all PBI-58 acceptance criteria |
+| 58-1 | [Audio SetPack and SavePackSelection](./58-1.md) | Done | Add Notifier.SetPack() for runtime hot-swap and SavePackSelection() for YAML persistence |
+| 58-2 | [Dialog enum and model state](./58-2.md) | Done | Add DialogSoundPackPicker enum, picker state fields, and S keybind to open picker |
+| 58-3 | [Picker update logic](./58-3.md) | Done | Handle keyboard navigation, selection, preview, and close in updateDialog routing |
+| 58-4 | [Picker rendering](./58-4.md) | Done | Render scrollable pack list overlay with active marker, counts, and empty-state message |
+| 58-5 | [E2E CoS Test](./58-5.md) | Done | End-to-end tests verifying all PBI-58 acceptance criteria |
 
 ## Dependency Graph
 

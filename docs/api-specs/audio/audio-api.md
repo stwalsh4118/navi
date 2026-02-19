@@ -71,6 +71,7 @@ func (p *Player) Backend() string
 ```
 
 Volume flags per backend:
+- `pw-play`: `--volume=<0.0-1.0>`
 - `paplay`: `--volume=<0-65536>`
 - `afplay`: `-v <0.0-1.0>`
 - `mpv`: `--volume=<0-100>`
@@ -79,7 +80,7 @@ Volume flags per backend:
 
 Detection behavior:
 - macOS: `afplay`
-- Linux/other: `paplay`, `aplay`, `ffplay`, `mpv`
+- Linux/other: `pw-play`, `paplay`, `aplay`, `ffplay`, `mpv`
 
 ## Text-to-Speech
 
@@ -107,6 +108,14 @@ func (n *Notifier) Notify(sessionName, newStatus string)
 func (n *Notifier) Enabled() bool
 func (n *Notifier) SetMuted(muted bool)
 func (n *Notifier) IsMuted() bool
+func (n *Notifier) SetPack(packName string) error  // hot-swap active sound pack at runtime
+func (n *Notifier) ActivePack() string              // returns current pack name
+```
+
+Config persistence:
+
+```go
+func SavePackSelection(configPath, packName string) error // update pack field in sounds.yaml
 ```
 
 Behavior:
@@ -117,7 +126,9 @@ Behavior:
 - Calculates effective volume via `cfg.Volume.EffectiveVolume(status)`
 - Plays sound with volume, then speaks TTS after delay when enabled
 - Non-blocking execution and graceful no-op when backends unavailable
-- SetMuted/IsMuted are thread-safe (session-only, not persisted)
+- SetMuted/IsMuted/SetPack/ActivePack are thread-safe (uses sync.RWMutex)
+- SetPack: resolves new pack files outside lock, then atomically swaps; empty name clears pack
+- SavePackSelection: reads existing YAML, updates only `pack:` field, preserves all other settings and file permissions
 
 ## TUI Integration
 
