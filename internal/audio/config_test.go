@@ -132,4 +132,112 @@ func TestDefaultConfigValues(t *testing.T) {
 	if cfg.TTS.Template != "{session} — {status}" {
 		t.Fatalf("unexpected default template: %q", cfg.TTS.Template)
 	}
+	if cfg.Pack != "" {
+		t.Fatalf("expected pack empty by default, got %q", cfg.Pack)
+	}
+	if cfg.Volume.Global != 100 {
+		t.Fatalf("expected volume.global=100, got %d", cfg.Volume.Global)
+	}
+	if cfg.Volume.Events == nil {
+		t.Fatalf("expected volume.events non-nil")
+	}
+}
+
+func TestLoadConfigWithPackAndVolume(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "sounds.yaml")
+	configYAML := strings.Join([]string{
+		"enabled: true",
+		"pack: starcraft",
+		"volume:",
+		"  global: 80",
+		"  events:",
+		"    error: 1.0",
+		"    done: 0.7",
+		"    waiting: 0.5",
+	}, "\n")
+	if err := os.WriteFile(configPath, []byte(configYAML), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("LoadConfig error: %v", err)
+	}
+	if cfg.Pack != "starcraft" {
+		t.Fatalf("expected pack=starcraft, got %q", cfg.Pack)
+	}
+	if cfg.Volume.Global != 80 {
+		t.Fatalf("expected volume.global=80, got %d", cfg.Volume.Global)
+	}
+	if got := cfg.Volume.Events["error"]; got != 1.0 {
+		t.Fatalf("expected error multiplier=1.0, got %f", got)
+	}
+	if got := cfg.Volume.Events["done"]; got != 0.7 {
+		t.Fatalf("expected done multiplier=0.7, got %f", got)
+	}
+	if got := cfg.Volume.Events["waiting"]; got != 0.5 {
+		t.Fatalf("expected waiting multiplier=0.5, got %f", got)
+	}
+}
+
+func TestLoadConfigBackwardsCompatNoPack(t *testing.T) {
+	tmpDir := t.TempDir()
+	soundFile := filepath.Join(tmpDir, "done.wav")
+	if err := os.WriteFile(soundFile, []byte(""), 0o644); err != nil {
+		t.Fatalf("write sound file: %v", err)
+	}
+
+	configPath := filepath.Join(tmpDir, "sounds.yaml")
+	configYAML := strings.Join([]string{
+		"enabled: true",
+		"files:",
+		"  done: " + soundFile,
+		"cooldown_seconds: 3",
+	}, "\n")
+	if err := os.WriteFile(configPath, []byte(configYAML), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("LoadConfig error: %v", err)
+	}
+	if cfg.Pack != "" {
+		t.Fatalf("expected empty pack for backwards compat, got %q", cfg.Pack)
+	}
+	if cfg.Volume.Global != 100 {
+		t.Fatalf("expected default volume.global=100 for backwards compat, got %d", cfg.Volume.Global)
+	}
+	if got := cfg.Files["done"]; got != soundFile {
+		t.Fatalf("expected file path preserved, got %q", got)
+	}
+}
+
+func TestEffectiveVolumeCalculation(t *testing.T) {
+	tests := []struct {
+		name     string
+		global   int
+		events   map[string]float64
+		event    string
+		expected int
+	}{
+		{"global 80 with 0.7 multiplier", 80, map[string]float64{"done": 0.7}, "done", 56},
+		{"global 80 no multiplier", 80, map[string]float64{}, "done", 80},
+		{"global 0", 0, map[string]float64{"done": 1.0}, "done", 0},
+		{"global 100 full multiplier", 100, map[string]float64{"error": 1.0}, "error", 100},
+		{"global 50 half multiplier", 50, map[string]float64{"waiting": 0.5}, "waiting", 25},
+		{"global 100 zero multiplier", 100, map[string]float64{"idle": 0.0}, "idle", 0},
+		{"rounding up", 75, map[string]float64{"done": 0.33}, "done", 25},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := VolumeConfig{Global: tt.global, Events: tt.events}
+			got := v.EffectiveVolume(tt.event)
+			if got != tt.expected {
+				t.Fatalf("EffectiveVolume(%q) = %d, want %d", tt.event, got, tt.expected)
+			}
+		})
+	}
 }

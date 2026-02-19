@@ -2,6 +2,7 @@ package audio
 
 import (
 	"fmt"
+	"math"
 	"os"
 
 	"gopkg.in/yaml.v3"
@@ -16,11 +17,41 @@ const (
 	defaultCooldownSeconds = 5
 	defaultBackendAuto     = "auto"
 	defaultTTSTemplate     = "{session} — {status}"
+	defaultGlobalVolume    = 100
+	minVolume              = 0
+	maxVolume              = 100
+	minEventMultiplier     = 0.0
+	maxEventMultiplier     = 1.0
 )
+
+// VolumeConfig defines global and per-event volume settings.
+type VolumeConfig struct {
+	Global int                `yaml:"global"`
+	Events map[string]float64 `yaml:"events"`
+}
+
+// EffectiveVolume returns the effective volume for an event, clamped to 0-100.
+// It multiplies Global by the per-event multiplier (defaulting to 1.0 if unset).
+func (v VolumeConfig) EffectiveVolume(event string) int {
+	multiplier := 1.0
+	if m, ok := v.Events[event]; ok {
+		multiplier = m
+	}
+	result := math.Round(float64(v.Global) * multiplier)
+	if result < float64(minVolume) {
+		return minVolume
+	}
+	if result > float64(maxVolume) {
+		return maxVolume
+	}
+	return int(result)
+}
 
 // Config defines audio notification settings loaded from sounds.yaml.
 type Config struct {
 	Enabled         bool              `yaml:"enabled"`
+	Pack            string            `yaml:"pack"`
+	Volume          VolumeConfig      `yaml:"volume"`
 	Triggers        map[string]bool   `yaml:"triggers"`
 	Files           map[string]string `yaml:"files"`
 	TTS             TTSConfig         `yaml:"tts"`
@@ -39,6 +70,10 @@ type TTSConfig struct {
 func DefaultConfig() *Config {
 	return &Config{
 		Enabled: false,
+		Volume: VolumeConfig{
+			Global: defaultGlobalVolume,
+			Events: make(map[string]float64),
+		},
 		Triggers: map[string]bool{
 			"waiting":    true,
 			"permission": true,
@@ -94,6 +129,15 @@ func ValidateConfig(cfg *Config) {
 		return
 	}
 
+	if cfg.Volume.Global < minVolume || cfg.Volume.Global > maxVolume {
+		fmt.Fprintf(os.Stderr, "Warning: volume.global %d outside valid range 0-100\n", cfg.Volume.Global)
+	}
+	for event, multiplier := range cfg.Volume.Events {
+		if multiplier < minEventMultiplier || multiplier > maxEventMultiplier {
+			fmt.Fprintf(os.Stderr, "Warning: volume.events.%s multiplier %.2f outside valid range 0.0-1.0\n", event, multiplier)
+		}
+	}
+
 	for status, filePath := range cfg.Files {
 		if filePath == "" {
 			continue
@@ -110,6 +154,9 @@ func normalizeConfig(cfg *Config) {
 	}
 	if cfg.Files == nil {
 		cfg.Files = make(map[string]string)
+	}
+	if cfg.Volume.Events == nil {
+		cfg.Volume.Events = make(map[string]float64)
 	}
 	if cfg.CooldownSeconds <= 0 {
 		cfg.CooldownSeconds = defaultCooldownSeconds
