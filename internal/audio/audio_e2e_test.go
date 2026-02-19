@@ -177,7 +177,7 @@ func backendBinariesForOS() (string, string) {
 	if runtime.GOOS == "darwin" {
 		return "afplay", "say"
 	}
-	return "paplay", "espeak-ng"
+	return "pw-play", "espeak-ng"
 }
 
 func createMockExecutable(t *testing.T, dir, name string, slow bool) {

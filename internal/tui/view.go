@@ -670,7 +670,7 @@ func (m Model) renderFooter() string {
 		// Show session action keybindings
 		parts = append(parts, "d dismiss", "n new", "x kill", "R rename", "G git")
 
-		parts = append(parts, "m mute", "r refresh", "q quit")
+		parts = append(parts, "m mute", "S sounds", "r refresh", "q quit")
 	}
 
 	footerHelp := strings.Join(parts, "  ")
@@ -1353,6 +1353,9 @@ func (m Model) renderDialog() string {
 	case DialogContentViewer:
 		b.Reset() // Clear the builder for content viewer
 		return m.renderContentViewer()
+	case DialogSoundPackPicker:
+		b.Reset()
+		return m.renderSoundPackPicker()
 	}
 
 	// Error message if present
@@ -1366,5 +1369,76 @@ func (m Model) renderDialog() string {
 	dialog := dialogBoxStyle.Width(dialogWidth).Render(content)
 
 	// Center the dialog horizontally using lipgloss.Place for proper multi-line handling
+	return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, dialog)
+}
+
+// renderSoundPackPicker renders the sound pack picker dialog overlay.
+func (m Model) renderSoundPackPicker() string {
+	var b strings.Builder
+
+	title := dialogTitleStyle.Render(DialogTitle(DialogSoundPackPicker))
+	b.WriteString(title)
+	b.WriteString("\n\n")
+
+	if len(m.soundPacks) == 0 {
+		b.WriteString(dimStyle.Render("No sound packs installed."))
+		b.WriteString("\n")
+		b.WriteString(dimStyle.Render("Add packs to ~/.config/navi/soundpacks/"))
+		b.WriteString("\n\n")
+		b.WriteString(dimStyle.Render("Esc: close"))
+	} else {
+		// Determine visible window
+		end := m.soundPackScrollOffset + soundPackPickerMaxVisible
+		if end > len(m.soundPacks) {
+			end = len(m.soundPacks)
+		}
+
+		// Scroll indicator (top)
+		if m.soundPackScrollOffset > 0 {
+			b.WriteString(dimStyle.Render(fmt.Sprintf("  ↑ %d more", m.soundPackScrollOffset)))
+			b.WriteString("\n")
+		}
+
+		visible := m.soundPacks[m.soundPackScrollOffset:end]
+		for i, pack := range visible {
+			globalIdx := m.soundPackScrollOffset + i
+
+			// Active marker
+			marker := "   "
+			if pack.Name == m.activeSoundPack {
+				marker = greenStyle.Render(" ✓ ")
+			}
+
+			// Pack info
+			info := fmt.Sprintf("%s (%d events, %d files)", pack.Name, pack.EventCount, pack.FileCount)
+
+			line := marker + info
+			if globalIdx == m.soundPackCursor {
+				line = selectedStyle.Render(line)
+			}
+			b.WriteString(line)
+			if i < len(visible)-1 {
+				b.WriteString("\n")
+			}
+		}
+
+		// Scroll indicator (bottom)
+		if end < len(m.soundPacks) {
+			b.WriteString("\n")
+			b.WriteString(dimStyle.Render(fmt.Sprintf("  ↓ %d more", len(m.soundPacks)-end)))
+		}
+
+		b.WriteString("\n\n")
+		b.WriteString(dimStyle.Render("↑↓: navigate  Enter: select  p: preview  Esc: close"))
+	}
+
+	// Error message
+	if m.dialogError != "" {
+		b.WriteString("\n")
+		b.WriteString(dialogErrorStyle.Render(m.dialogError))
+	}
+
+	content := b.String()
+	dialog := dialogBoxStyle.Width(dialogWidth).Render(content)
 	return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, dialog)
 }

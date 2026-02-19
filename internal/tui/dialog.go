@@ -13,6 +13,7 @@ const (
 	DialogGitDiff                         // Git diff view dialog
 	DialogMetricsDetail                   // Metrics detail view dialog
 	DialogContentViewer                   // Content viewer overlay
+	DialogSoundPackPicker                 // Sound pack picker overlay
 )
 
 // DialogTitle returns the title for a given dialog mode.
@@ -32,6 +33,8 @@ func DialogTitle(mode DialogMode) string {
 		return "Session Metrics"
 	case DialogContentViewer:
 		return "Content Viewer"
+	case DialogSoundPackPicker:
+		return "Sound Packs"
 	default:
 		return ""
 	}

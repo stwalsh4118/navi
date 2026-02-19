@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 
@@ -174,4 +175,49 @@ func normalizeConfig(cfg *Config) {
 	for status, filePath := range cfg.Files {
 		cfg.Files[status] = pathutil.ExpandPath(filePath)
 	}
+}
+
+// SavePackSelection updates only the pack field in the audio config file,
+// preserving all other user settings. Creates the file with defaults if missing.
+func SavePackSelection(configPath, packName string) error {
+	if configPath == "" {
+		configPath = DefaultConfigPath
+	}
+	configPath = pathutil.ExpandPath(configPath)
+
+	cfg := DefaultConfig()
+	filePerm := os.FileMode(0o644) // default for new files
+
+	info, statErr := os.Stat(configPath)
+	if statErr != nil && !os.IsNotExist(statErr) {
+		return fmt.Errorf("stat config: %w", statErr)
+	}
+	if statErr == nil {
+		filePerm = info.Mode().Perm()
+		data, err := os.ReadFile(configPath)
+		if err != nil {
+			return fmt.Errorf("read config: %w", err)
+		}
+		if err := yaml.Unmarshal(data, cfg); err != nil {
+			return fmt.Errorf("parse config: %w", err)
+		}
+	}
+
+	cfg.Pack = packName
+
+	out, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+
+	// Ensure parent directory exists
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		return fmt.Errorf("create config directory: %w", err)
+	}
+
+	if err := os.WriteFile(configPath, out, filePerm); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+
+	return nil
 }

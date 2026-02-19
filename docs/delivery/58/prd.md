@@ -66,4 +66,4 @@ PBI-56 introduced sound packs with `ListPacks()`, `ScanPack()`, and the `navi so
 
 ## Related Tasks
 
-_Tasks will be created when this PBI is approved via `/plan-pbi 58`._
+[View Tasks](./tasks.md)

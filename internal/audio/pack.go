@@ -31,6 +31,19 @@ var (
 	multiSoundPattern = regexp.MustCompile(`^(.+)-(\d+)$`)
 )
 
+// SetPackBaseDirForTest overrides the pack base directory for testing.
+// Only use in tests. Call ResetPackBaseDirForTest to restore.
+func SetPackBaseDirForTest(dir string) {
+	packBaseDir = func() string { return dir }
+}
+
+// ResetPackBaseDirForTest restores the default pack base directory.
+func ResetPackBaseDirForTest() {
+	packBaseDir = func() string {
+		return pathutil.ExpandPath(defaultPackDir)
+	}
+}
+
 // PackInfo describes an installed sound pack.
 type PackInfo struct {
 	Name       string

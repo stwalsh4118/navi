@@ -1,6 +1,9 @@
 package audio
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -357,6 +360,148 @@ func TestRandomSelection(t *testing.T) {
 	if len(seen) < 2 {
 		t.Fatalf("expected variation in file selection, got %v", player.files)
 	}
+}
+
+func TestSetPackValid(t *testing.T) {
+	tmpDir := t.TempDir()
+	packDir := filepath.Join(tmpDir, "testpack")
+	if err := os.MkdirAll(packDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(packDir, "done.wav"), []byte("fake"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	withPackBaseDir(t, tmpDir)
+
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	player := &mockPlayer{available: true}
+	tts := &mockTTS{available: false}
+	n := newTestNotifier(cfg, player, tts)
+
+	if err := n.SetPack("testpack"); err != nil {
+		t.Fatalf("SetPack error: %v", err)
+	}
+	if n.cfg.Pack != "testpack" {
+		t.Fatalf("expected cfg.Pack=testpack, got %q", n.cfg.Pack)
+	}
+	if n.packFiles == nil || len(n.packFiles["done"]) == 0 {
+		t.Fatalf("expected packFiles populated, got %v", n.packFiles)
+	}
+}
+
+func TestSetPackEmpty(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.Pack = "old-pack"
+	player := &mockPlayer{available: true}
+	tts := &mockTTS{available: false}
+	n := newTestNotifier(cfg, player, tts)
+	n.packFiles = map[string][]string{"done": {"/old/done.wav"}}
+
+	if err := n.SetPack(""); err != nil {
+		t.Fatalf("SetPack error: %v", err)
+	}
+	if n.cfg.Pack != "" {
+		t.Fatalf("expected cfg.Pack empty, got %q", n.cfg.Pack)
+	}
+	if n.packFiles != nil {
+		t.Fatalf("expected packFiles nil, got %v", n.packFiles)
+	}
+}
+
+func TestSetPackInvalidPreservesState(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.Pack = "old-pack"
+	player := &mockPlayer{available: true}
+	tts := &mockTTS{available: false}
+	n := newTestNotifier(cfg, player, tts)
+	n.packFiles = map[string][]string{"done": {"/old/done.wav"}}
+
+	err := n.SetPack("nonexistent-pack-xyz")
+	if err == nil {
+		t.Fatalf("expected error for invalid pack")
+	}
+	// State should be preserved
+	if n.cfg.Pack != "old-pack" {
+		t.Fatalf("expected cfg.Pack preserved, got %q", n.cfg.Pack)
+	}
+	if len(n.packFiles["done"]) != 1 {
+		t.Fatalf("expected packFiles preserved")
+	}
+}
+
+func TestSetPackNilSafety(t *testing.T) {
+	var n *Notifier
+	if err := n.SetPack("test"); err != nil {
+		t.Fatalf("nil notifier SetPack should return nil, got %v", err)
+	}
+}
+
+func TestActivePack(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Pack = "my-pack"
+	player := &mockPlayer{available: true}
+	tts := &mockTTS{available: false}
+	n := newTestNotifier(cfg, player, tts)
+
+	if got := n.ActivePack(); got != "my-pack" {
+		t.Fatalf("expected ActivePack()=my-pack, got %q", got)
+	}
+
+	var nilN *Notifier
+	if got := nilN.ActivePack(); got != "" {
+		t.Fatalf("expected ActivePack() empty for nil notifier, got %q", got)
+	}
+}
+
+func TestSetPackConcurrentWithNotify(t *testing.T) {
+	tmpDir := t.TempDir()
+	for _, pack := range []string{"pack-a", "pack-b"} {
+		packDir := filepath.Join(tmpDir, pack)
+		if err := os.MkdirAll(packDir, 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(packDir, "done.wav"), []byte("fake"), 0o644); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+	}
+	withPackBaseDir(t, tmpDir)
+
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.Triggers["done"] = true
+	cfg.CooldownSeconds = 0
+
+	player := &mockPlayer{available: true}
+	tts := &mockTTS{available: false}
+	n := newTestNotifier(cfg, player, tts)
+
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	n.now = func() time.Time {
+		now = now.Add(time.Hour)
+		return now
+	}
+
+	// Hammer SetPack and Notify concurrently to detect races
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 50; i++ {
+			pack := "pack-a"
+			if i%2 == 0 {
+				pack = "pack-b"
+			}
+			_ = n.SetPack(pack)
+		}
+	}()
+	for i := 0; i < 50; i++ {
+		n.Notify(fmt.Sprintf("s%d", i), "done")
+		_ = n.ActivePack()
+	}
+	<-done
 }
 
 func TestVolumePassedToPlayer(t *testing.T) {

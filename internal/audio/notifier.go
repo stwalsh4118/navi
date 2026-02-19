@@ -30,7 +30,7 @@ type Notifier struct {
 	cooldowns map[string]time.Time
 	packFiles map[string][]string
 
-	mu       sync.Mutex
+	mu       sync.RWMutex
 	muted    bool
 	now      func() time.Time
 	runAsync func(func())
@@ -78,6 +78,44 @@ func NewNotifier(cfg *Config) *Notifier {
 	return notifier
 }
 
+// SetPack hot-swaps the active sound pack at runtime (thread-safe).
+// If packName is empty, clears pack files (reverts to no-pack state).
+func (n *Notifier) SetPack(packName string) error {
+	if n == nil {
+		return nil
+	}
+
+	if packName == "" {
+		n.mu.Lock()
+		defer n.mu.Unlock()
+		n.packFiles = nil
+		n.cfg.Pack = ""
+		return nil
+	}
+
+	// Resolve outside the lock to avoid holding it during I/O.
+	files, err := ResolveSoundFiles(packName)
+	if err != nil {
+		return err
+	}
+
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.packFiles = files
+	n.cfg.Pack = packName
+	return nil
+}
+
+// ActivePack returns the name of the currently active sound pack (thread-safe).
+func (n *Notifier) ActivePack() string {
+	if n == nil {
+		return ""
+	}
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return n.cfg.Pack
+}
+
 // SetMuted sets the mute state (thread-safe).
 func (n *Notifier) SetMuted(muted bool) {
 	if n == nil {
@@ -93,8 +131,8 @@ func (n *Notifier) IsMuted() bool {
 	if n == nil {
 		return false
 	}
-	n.mu.Lock()
-	defer n.mu.Unlock()
+	n.mu.RLock()
+	defer n.mu.RUnlock()
 	return n.muted
 }
 
@@ -170,6 +208,9 @@ func (n *Notifier) Notify(sessionName, newStatus string) {
 // 2. packFiles[status] — random selection if multiple files
 // 3. empty string (no sound)
 func (n *Notifier) resolveSound(status string) string {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+
 	if filePath, ok := n.cfg.Files[status]; ok && filePath != "" {
 		return filePath
 	}
