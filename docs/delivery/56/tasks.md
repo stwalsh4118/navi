@@ -8,13 +8,13 @@ This document lists all tasks associated with PBI 56.
 
 | Task ID | Name | Status | Description |
 | :------ | :--- | :----- | :---------- |
-| 56-1 | [Config Schema — Pack and Volume Fields](./56-1.md) | Proposed | Add Pack, Volume struct, and updated YAML parsing to audio Config |
-| 56-2 | [Sound Pack Scanner and File Resolution](./56-2.md) | Proposed | New pack.go with directory scanning, extension detection, multi-file discovery, and pack listing |
-| 56-3 | [Volume Control — Per-Backend CLI Flags](./56-3.md) | Proposed | Add volume parameter to Player.Play() with backend-specific flag mapping and volume calculation |
-| 56-4 | [Notifier Integration — Pack Resolution, Volume, Random Selection, and Mute](./56-4.md) | Proposed | Wire pack scanner, volume, random sound selection, and mute state into the Notifier |
-| 56-5 | [Mute Toggle — TUI Keybind and Visual Indicator](./56-5.md) | Proposed | Add m keybind to toggle mute with a visual indicator in the TUI footer |
-| 56-6 | [CLI Subcommands — navi sound test/list](./56-6.md) | Proposed | Add navi sound test, test-all, and list subcommands for previewing and managing sound packs |
-| 56-7 | [E2E CoS Test — Full Audio Enhancement Verification](./56-7.md) | Proposed | End-to-end tests verifying all 8 acceptance criteria for PBI-56 |
+| 56-1 | [Config Schema — Pack and Volume Fields](./56-1.md) | Done | Add Pack, Volume struct, and updated YAML parsing to audio Config |
+| 56-2 | [Sound Pack Scanner and File Resolution](./56-2.md) | Done | New pack.go with directory scanning, extension detection, multi-file discovery, and pack listing |
+| 56-3 | [Volume Control — Per-Backend CLI Flags](./56-3.md) | Done | Add volume parameter to Player.Play() with backend-specific flag mapping and volume calculation |
+| 56-4 | [Notifier Integration — Pack Resolution, Volume, Random Selection, and Mute](./56-4.md) | Done | Wire pack scanner, volume, random sound selection, and mute state into the Notifier |
+| 56-5 | [Mute Toggle — TUI Keybind and Visual Indicator](./56-5.md) | Done | Add m keybind to toggle mute with a visual indicator in the TUI footer |
+| 56-6 | [CLI Subcommands — navi sound test/list](./56-6.md) | Done | Add navi sound test, test-all, and list subcommands for previewing and managing sound packs |
+| 56-7 | [E2E CoS Test — Full Audio Enhancement Verification](./56-7.md) | Done | End-to-end tests verifying all 8 acceptance criteria for PBI-56 |
 
 ## Dependency Graph
 
