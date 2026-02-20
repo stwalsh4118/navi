@@ -285,3 +285,78 @@ func TestFormatToolCount(t *testing.T) {
 		}
 	})
 }
+
+func TestFormatBytes(t *testing.T) {
+	tests := []struct {
+		bytes    int64
+		expected string
+	}{
+		{0, "0"},
+		{512, "0"},
+		{1023, "0"},
+		{1024, "1K"},
+		{512 * 1024, "512K"},
+		{1024*1024 - 1, "1023K"},
+		{1024 * 1024, "1M"},
+		{256 * 1024 * 1024, "256M"},
+		{999 * 1024 * 1024, "999M"},
+		{1024 * 1024 * 1024, "1.0G"},
+		{int64(1.5 * 1024 * 1024 * 1024), "1.5G"},
+		{10 * 1024 * 1024 * 1024, "10.0G"},
+	}
+
+	for _, tt := range tests {
+		result := FormatBytes(tt.bytes)
+		if result != tt.expected {
+			t.Errorf("FormatBytes(%d) = %q, want %q", tt.bytes, result, tt.expected)
+		}
+	}
+}
+
+func TestResourceMetricsJSON(t *testing.T) {
+	rm := ResourceMetrics{RSSBytes: 268435456}
+	data, err := json.Marshal(rm)
+	if err != nil {
+		t.Fatalf("failed to marshal ResourceMetrics: %v", err)
+	}
+
+	expected := `{"rss_bytes":268435456}`
+	if string(data) != expected {
+		t.Errorf("expected %s, got %s", expected, string(data))
+	}
+
+	var unmarshaled ResourceMetrics
+	if err := json.Unmarshal(data, &unmarshaled); err != nil {
+		t.Fatalf("failed to unmarshal ResourceMetrics: %v", err)
+	}
+	if unmarshaled.RSSBytes != rm.RSSBytes {
+		t.Errorf("RSSBytes mismatch: got %d, want %d", unmarshaled.RSSBytes, rm.RSSBytes)
+	}
+}
+
+func TestMetricsResourceOmitEmpty(t *testing.T) {
+	m := Metrics{Resource: nil}
+	data, err := json.Marshal(m)
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+	if string(data) != `{}` {
+		t.Errorf("expected {}, got %s", string(data))
+	}
+
+	m = Metrics{Resource: &ResourceMetrics{RSSBytes: 1024}}
+	data, err = json.Marshal(m)
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+	var unmarshaled Metrics
+	if err := json.Unmarshal(data, &unmarshaled); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+	if unmarshaled.Resource == nil {
+		t.Error("expected Resource to be non-nil")
+	}
+	if unmarshaled.Resource.RSSBytes != 1024 {
+		t.Errorf("RSSBytes mismatch: got %d, want 1024", unmarshaled.Resource.RSSBytes)
+	}
+}

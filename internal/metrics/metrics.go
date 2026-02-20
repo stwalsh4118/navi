@@ -35,11 +35,17 @@ type ToolMetrics struct {
 	Counts map[string]int `json:"counts"`
 }
 
+// ResourceMetrics tracks resource usage for a session.
+type ResourceMetrics struct {
+	RSSBytes int64 `json:"rss_bytes"`
+}
+
 // Metrics aggregates all session metrics data.
 type Metrics struct {
-	Tokens *TokenMetrics `json:"tokens,omitempty"`
-	Time   *TimeMetrics  `json:"time,omitempty"`
-	Tools  *ToolMetrics  `json:"tools,omitempty"`
+	Tokens   *TokenMetrics    `json:"tokens,omitempty"`
+	Time     *TimeMetrics     `json:"time,omitempty"`
+	Tools    *ToolMetrics     `json:"tools,omitempty"`
+	Resource *ResourceMetrics `json:"resource,omitempty"`
 }
 
 // FormatTokenCount returns an abbreviated token count string.
@@ -87,4 +93,26 @@ func FormatToolCount(tools *ToolMetrics) int {
 		total += count
 	}
 	return total
+}
+
+// Byte unit thresholds for FormatBytes.
+const (
+	bytesPerKiB = 1024
+	bytesPerMiB = 1024 * 1024
+	bytesPerGiB = 1024 * 1024 * 1024
+)
+
+// FormatBytes returns a human-readable byte size string.
+// Examples: "0", "512K", "256M", "1.2G"
+func FormatBytes(bytes int64) string {
+	if bytes < bytesPerKiB {
+		return "0"
+	}
+	if bytes < bytesPerMiB {
+		return fmt.Sprintf("%dK", bytes/bytesPerKiB)
+	}
+	if bytes < bytesPerGiB {
+		return fmt.Sprintf("%dM", bytes/bytesPerMiB)
+	}
+	return fmt.Sprintf("%.1fG", float64(bytes)/bytesPerGiB)
 }
