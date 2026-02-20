@@ -8,11 +8,11 @@ This document lists all tasks associated with PBI 57.
 
 | Task ID | Name | Status | Description |
 | :------ | :--- | :----- | :---------- |
-| 57-1 | [ResourceMetrics type and FormatBytes helper](./57-1.md) | Proposed | Add ResourceMetrics struct to metrics package with RSSBytes field and human-readable byte formatting function |
-| 57-2 | [/proc process tree RSS calculator](./57-2.md) | Proposed | New internal/resource package that walks /proc to sum RSS for all processes in a tmux session's process tree |
-| 57-3 | [Resource polling integration in TUI](./57-3.md) | Proposed | Add 30-second independent resource tick, poll resource metrics for local sessions, merge onto session data |
-| 57-4 | [RAM badge rendering in sidebar](./57-4.md) | Proposed | Extend renderMetricsBadges to display RAM badge alongside existing time/tools/tokens badges |
-| 57-5 | [E2E CoS Test](./57-5.md) | Proposed | End-to-end verification of all 6 acceptance criteria for session RAM monitoring |
+| 57-1 | [ResourceMetrics type and FormatBytes helper](./57-1.md) | Done | Add ResourceMetrics struct to metrics package with RSSBytes field and human-readable byte formatting function |
+| 57-2 | [/proc process tree RSS calculator](./57-2.md) | Done | New internal/resource package that walks /proc to sum RSS for all processes in a tmux session's process tree |
+| 57-3 | [Resource polling integration in TUI](./57-3.md) | Done | Add 30-second independent resource tick, poll resource metrics for local sessions, merge onto session data |
+| 57-4 | [RAM badge rendering in sidebar](./57-4.md) | Done | Extend renderMetricsBadges to display RAM badge alongside existing time/tools/tokens badges |
+| 57-5 | [E2E CoS Test](./57-5.md) | Done | End-to-end verification of all 6 acceptance criteria for session RAM monitoring |
 
 ## Dependency Graph
 
