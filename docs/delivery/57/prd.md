@@ -4,7 +4,7 @@
 
 ## Overview
 
-Add per-session RAM usage monitoring to the Navi TUI sidebar. Each session displays a compact RAM badge showing the total resident memory of all processes in its tmux session process tree, polled every 30 seconds.
+Add per-session RAM usage monitoring to the Navi TUI sidebar. Each session displays a compact RAM badge showing the total resident memory of all processes in its tmux session process tree, polled every 2 seconds.
 
 ## Problem Statement
 
@@ -20,7 +20,7 @@ Claude Code and OpenCode have memory leaks that cause steadily increasing RAM us
 
 For each tmux session, get the root shell PIDs using `tmux list-panes -t <session> -F '#{pane_pid}'`, then recursively walk the process tree via `/proc/<pid>/children` (or `/proc/<pid>/stat`) to find all descendant processes. Sum the RSS values from `/proc/<pid>/statm` or `/proc/<pid>/status` for the full tree.
 
-This approach avoids spawning subprocesses (no `ps` calls) and is efficient for a 30-second polling interval.
+This approach avoids spawning subprocesses (no `ps` calls) and is efficient for a 2-second polling interval.
 
 ### Data Model
 
@@ -28,7 +28,7 @@ Add a resource metrics type (e.g., `ResourceMetrics` with `RSSBytes int64`) to t
 
 ### Polling
 
-Use a separate tick interval (30 seconds) from the main 500ms session poll. The resource poll runs independently and updates session data in place. Only local sessions are measured — remote sessions will not display a RAM badge.
+Use a separate tick interval (2 seconds) from the main 500ms session poll. The resource poll runs independently and updates session data in place. Only local sessions are measured — remote sessions will not display a RAM badge.
 
 ### Rendering
 
@@ -45,7 +45,7 @@ Add a RAM badge to the existing metrics badge line in the sidebar session row, f
 
 1. Each local session in the sidebar displays a RAM usage badge showing total RSS of all processes in the tmux session's process tree
 2. RAM is calculated by walking the process tree from tmux pane PIDs via `/proc` filesystem (no subprocess spawning)
-3. RAM usage is polled every 30 seconds, independently of the main 500ms session poll
+3. RAM usage is polled every 2 seconds, independently of the main 500ms session poll
 4. RAM is formatted human-readably (e.g., "256M", "1.2G")
 5. Remote sessions do not display a RAM badge
 6. RAM badge renders alongside existing metric badges (time, tools, tokens) with consistent styling
@@ -61,7 +61,7 @@ Add a RAM badge to the existing metrics badge line in the sidebar session row, f
 None — resolved during brainstorm:
 - Approach: `/proc` filesystem walking (no subprocess spawning) ✓
 - Display location: Session list sidebar ✓
-- Poll interval: 30 seconds ✓
+- Poll interval: 2 seconds ✓
 - Alerts: Informational only (no thresholds) ✓
 
 ## Related Tasks

@@ -1,12 +1,20 @@
 package resource
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
+
+// procFS is the root of the Linux process filesystem.
+const procFS = "/proc"
+
+// tmuxCmdTimeout bounds how long we wait for tmux to respond.
+const tmuxCmdTimeout = 5 * time.Second
 
 // pageSize is the system memory page size in bytes, cached at init.
 var pageSize = int64(os.Getpagesize())
@@ -29,7 +37,9 @@ func SessionRSS(sessionName string) int64 {
 
 // getPanePIDs returns the root shell PIDs for all panes in a tmux session.
 func getPanePIDs(sessionName string) []int {
-	cmd := exec.Command("tmux", "list-panes", "-s", "-t", sessionName, "-F", "#{pane_pid}")
+	ctx, cancel := context.WithTimeout(context.Background(), tmuxCmdTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "tmux", "list-panes", "-s", "-t", sessionName, "-F", "#{pane_pid}")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil
@@ -63,7 +73,7 @@ func processTreeRSS(pid int) int64 {
 // readRSSBytes reads a single process's RSS from /proc/<pid>/statm.
 // The second field of statm is RSS in pages. Returns 0 on any error.
 func readRSSBytes(pid int) int64 {
-	path := filepath.Join("/proc", strconv.Itoa(pid), "statm")
+	path := filepath.Join(procFS, strconv.Itoa(pid), "statm")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return 0
@@ -86,7 +96,7 @@ func readRSSBytes(pid int) int64 {
 // Returns an empty slice on any error or if no children exist.
 func getChildPIDs(pid int) []int {
 	pidStr := strconv.Itoa(pid)
-	pattern := filepath.Join("/proc", pidStr, "task", "*", "children")
+	pattern := filepath.Join(procFS, pidStr, "task", "*", "children")
 	matches, err := filepath.Glob(pattern)
 	if err != nil || len(matches) == 0 {
 		return nil

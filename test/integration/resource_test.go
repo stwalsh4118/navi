@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -21,14 +22,16 @@ func TestResource_SessionRSS_NoTmux(t *testing.T) {
 func TestResource_ProcessTreeRSS_Integration(t *testing.T) {
 	// The test process itself should have non-zero RSS when read via /proc
 	pid := os.Getpid()
-	// Read directly from /proc to verify the process has RSS
-	statmPath := "/proc/" + string(rune('0'+pid/10000%10)) + string(rune('0'+pid/1000%10)) + string(rune('0'+pid/100%10)) + string(rune('0'+pid/10%10)) + string(rune('0'+pid%10)) + "/statm"
-	_, err := os.ReadFile(statmPath)
+	statmPath := fmt.Sprintf("/proc/%d/statm", pid)
+	data, err := os.ReadFile(statmPath)
 	if err != nil {
-		// Just check that /proc exists and is readable
-		if _, err := os.Stat("/proc"); os.IsNotExist(err) {
+		if _, statErr := os.Stat("/proc"); os.IsNotExist(statErr) {
 			t.Skip("/proc not available")
 		}
+		t.Fatalf("failed to read %s: %v", statmPath, err)
+	}
+	if len(data) == 0 {
+		t.Error("statm file is empty")
 	}
 }
 

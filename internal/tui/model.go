@@ -1079,7 +1079,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, prAutoRefreshTickCmd()
 
 	case resourceTickMsg:
-		// Periodic resource usage poll (30s interval)
+		// Periodic resource usage poll (2s interval)
 		if len(m.sessions) == 0 {
 			return m, resourceTickCmd()
 		}
