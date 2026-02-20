@@ -464,6 +464,11 @@ func renderMetricsBadges(m *metrics.Metrics) string {
 		parts = append(parts, fmt.Sprintf("📊 %s", metrics.FormatTokenCount(m.Tokens.Total)))
 	}
 
+	// RAM badge
+	if m.Resource != nil && m.Resource.RSSBytes > 0 {
+		parts = append(parts, fmt.Sprintf("🧠 %s", metrics.FormatBytes(m.Resource.RSSBytes)))
+	}
+
 	return strings.Join(parts, "  ")
 }
 

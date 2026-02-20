@@ -62,7 +62,7 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 54 | Developer | As a developer, I want PM current-PBI detection to use session-scoped signals plus provider hints so that each active session maps to the correct PBI even during concurrent work | Done | [View Details](./54/prd.md) |
 | 55 | User | As a user, I want PM project status to refresh immediately with visible loading feedback and faster provider updates so that pressing P feels responsive and trustworthy | Done | [View Details](./55/prd.md) |
 | 56 | User | As a user, I want swappable sound packs, volume control, multiple sounds per event with random selection, and mute/preview controls so that audio notifications are customizable, varied, and easy to manage | Done | [View Details](./56/prd.md) |
-| 57 | User | As a user, I want to see per-session RAM usage in the sidebar so that I can spot memory leaks at a glance without leaving the TUI | Proposed | [View Details](./57/prd.md) |
+| 57 | User | As a user, I want to see per-session RAM usage in the sidebar so that I can spot memory leaks at a glance without leaving the TUI | Done | [View Details](./57/prd.md) |
 | 58 | User | As a user, I want to browse and switch sound packs from within the TUI so that I can customize audio without editing config files | Done | [View Details](./58/prd.md) |
 
 ## History Log
@@ -208,3 +208,6 @@ This document contains all Product Backlog Items (PBIs) for the claude-sessions 
 | 2026-02-19 06:54:06 | 58 | Status Change | Proposed → Agreed. Auto-approved for planning. | AI_Agent |
 | 2026-02-19 07:12:08 | 58 | Status Change | Agreed → InProgress. Started implementation. | AI_Agent |
 | 2026-02-19 07:52:28 | 58 | Status Change | InProgress → Done. All 5 tasks Done, all tests pass with -race, go vet clean. | AI_Agent |
+| 2026-02-19 08:35:20 | 57 | Status Change | Proposed → Agreed. Auto-approved for planning. | AI_Agent |
+| 2026-02-19 08:43:13 | 57 | Status Change | Agreed → InProgress. Started implementation. | AI_Agent |
+| 2026-02-20 05:48:29 | 57 | Status Change | InProgress → Done. All 5 tasks Done, all tests pass with -race, go vet clean. | AI_Agent |

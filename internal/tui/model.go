@@ -14,6 +14,7 @@ import (
 
 	"github.com/stwalsh4118/navi/internal/audio"
 	"github.com/stwalsh4118/navi/internal/git"
+	"github.com/stwalsh4118/navi/internal/metrics"
 	"github.com/stwalsh4118/navi/internal/monitor"
 	"github.com/stwalsh4118/navi/internal/pathutil"
 	"github.com/stwalsh4118/navi/internal/pm"
@@ -59,6 +60,9 @@ type Model struct {
 
 	// Git info cache
 	gitCache map[string]*git.Info // Cache of git info by session working directory
+
+	// Resource metrics cache (RSS bytes by session name)
+	resourceCache map[string]int64
 
 	// Remote session support
 	Remotes             []remote.Config    // Configured remote machines
@@ -206,6 +210,12 @@ type soundPacksMsg struct {
 	err   error
 }
 
+// resourceTickMsg is sent to trigger periodic resource usage polling.
+type resourceTickMsg time.Time
+
+// resourcePollMsg carries polled RSS data keyed by session name.
+type resourcePollMsg map[string]int64
+
 // gitTickMsg is sent to trigger periodic git info refresh.
 type gitTickMsg time.Time
 
@@ -258,7 +268,7 @@ func (m Model) Init() tea.Cmd {
 		m.gitCache = make(map[string]*git.Info)
 	}
 
-	cmds := []tea.Cmd{tickCmd(), pollSessions, gitTickCmd(), pmTickCmd()}
+	cmds := []tea.Cmd{tickCmd(), pollSessions, gitTickCmd(), pmTickCmd(), resourceTickCmd()}
 
 	// Start task refresh tick
 	interval := taskDefaultRefreshInterval
@@ -835,6 +845,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
+		// Merge cached resource metrics into sessions
+		m.mergeResourceCache()
 		m.detectStatusChanges(m.sessions)
 
 		// Trigger immediate git poll if cache is empty and we have sessions
@@ -920,6 +932,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			}
+			// Merge cached resource metrics into sessions
+			m.mergeResourceCache()
 			m.detectStatusChanges(m.sessions)
 
 			// Clamp cursor for filtered sessions
@@ -1063,6 +1077,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, prAutoRefreshTickCmd()
+
+	case resourceTickMsg:
+		// Periodic resource usage poll (2s interval)
+		if len(m.sessions) == 0 {
+			return m, resourceTickCmd()
+		}
+		// Copy sessions for the poll goroutine
+		sessionsCopy := make([]session.Info, len(m.sessions))
+		copy(sessionsCopy, m.sessions)
+		return m, tea.Batch(pollResourceMetricsCmd(sessionsCopy), resourceTickCmd())
+
+	case resourcePollMsg:
+		// Update resource cache with new poll data
+		if m.resourceCache == nil {
+			m.resourceCache = make(map[string]int64)
+		}
+		for name, rss := range msg {
+			m.resourceCache[name] = rss
+		}
+		// Merge cached resource data onto sessions
+		m.mergeResourceCache()
+		return m, nil
 
 	case gitTickMsg:
 		// Periodic git info refresh
@@ -2796,6 +2832,22 @@ func initPMCachedBriefing() *pm.PMBriefing {
 		return nil
 	}
 	return cached.Briefing
+}
+
+// mergeResourceCache re-applies cached resource metrics onto the current sessions list.
+// Called after sessionsMsg replaces the sessions slice to preserve resource data.
+func (m *Model) mergeResourceCache() {
+	if len(m.resourceCache) == 0 {
+		return
+	}
+	for i := range m.sessions {
+		if rss, ok := m.resourceCache[m.sessions[i].TmuxSession]; ok {
+			if m.sessions[i].Metrics == nil {
+				m.sessions[i].Metrics = &metrics.Metrics{}
+			}
+			m.sessions[i].Metrics.Resource = &metrics.ResourceMetrics{RSSBytes: rss}
+		}
+	}
 }
 
 func (m *Model) detectStatusChanges(current []session.Info) {
