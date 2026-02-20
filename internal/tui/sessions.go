@@ -15,6 +15,7 @@ import (
 	"github.com/stwalsh4118/navi/internal/metrics"
 	"github.com/stwalsh4118/navi/internal/pathutil"
 	"github.com/stwalsh4118/navi/internal/remote"
+	"github.com/stwalsh4118/navi/internal/resource"
 	"github.com/stwalsh4118/navi/internal/session"
 	"github.com/stwalsh4118/navi/internal/tokens"
 )
@@ -122,6 +123,33 @@ func prAutoRefreshTickCmd() tea.Cmd {
 	return tea.Tick(prAutoRefreshInterval, func(t time.Time) tea.Msg {
 		return prAutoRefreshTickMsg(t)
 	})
+}
+
+// resourcePollInterval is the interval between resource usage polls.
+const resourcePollInterval = 2 * time.Second
+
+// resourceTickCmd returns a command that fires after resourcePollInterval.
+func resourceTickCmd() tea.Cmd {
+	return tea.Tick(resourcePollInterval, func(t time.Time) tea.Msg {
+		return resourceTickMsg(t)
+	})
+}
+
+// pollResourceMetricsCmd returns a command that polls RSS for local sessions.
+func pollResourceMetricsCmd(sessions []session.Info) tea.Cmd {
+	return func() tea.Msg {
+		result := make(resourcePollMsg)
+		for _, s := range sessions {
+			if s.Remote != "" {
+				continue
+			}
+			rss := resource.SessionRSS(s.TmuxSession)
+			if rss > 0 {
+				result[s.TmuxSession] = rss
+			}
+		}
+		return result
+	}
 }
 
 // pollGitInfoCmd returns a command that polls git info for local session working directories.
